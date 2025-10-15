@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raco"
+version = "0.1.0"
+description = "RaCo - A computer vision keypoint extraction library"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "torch>=1.9.1",
+    "torchvision>=0.3",
+    "numpy",
+    "opencv-python",
+    "matplotlib",
+    "kornia>=0.6.11",
+    "lightglue @ git+https://github.com/cvg/LightGlue",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "black",
+    "isort",
+    "flake8",
+    "mypy",
+]
+notebooks = [
+    "jupyter",
+    "ipykernel",
+    "matplotlib",
+]
+
+[tool.setuptools]
+packages = ["raco"]
+package-data = {"raco" = ["*.pth"]}
