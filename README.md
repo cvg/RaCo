@@ -1,5 +1,7 @@
 # RaCo: Ranking and Covariance for Practical Learned Keypoints
 
+*README.md is WIP*
+
 RaCo is a state-of-the-art computer vision library for keypoint detection and feature extraction. It provides robust keypoint detection with uncertainty estimation through covariance prediction.
 
 ## Features
@@ -123,7 +125,7 @@ Check out the [`demo.ipynb`](demo.ipynb) notebook for a complete walkthrough sho
 If you use RaCo in your research, please cite:
 
 ```bibtex
-@article{raco2024,
+@article{raco2025,
   title={RaCo: Ranking and Covariance for Robust Keypoint Detection},
   author={},
   journal={},
