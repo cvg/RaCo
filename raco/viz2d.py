@@ -8,6 +8,7 @@
 import matplotlib
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
+from matplotlib.collections import EllipseCollection
 import numpy as np
 import torch
 
@@ -114,6 +115,99 @@ def plot_keypoints(kpts, colors="lime", ps=4, axes=None, a=1.0):
         if isinstance(k, torch.Tensor):
             k = k.cpu().numpy()
         ax.scatter(k[:, 0], k[:, 1], c=c, s=ps, linewidths=0, alpha=alpha)
+
+
+def plot_covariance_ellipses(
+    kpts, covariances, colors=None, sigma=3, lw=2, alpha=0.6, axes=None
+):
+    """Plot covariance ellipses for keypoints (super fast using EllipseCollection).
+    Args:
+        kpts: list of ndarrays of size (N, 2) or single ndarray of keypoint coordinates.
+        covariances: list of ndarrays of size (N, 2, 2) or single ndarray of covariance matrices.
+        colors: string, list of colors, or colormap. If None, uses tab10 colormap.
+        sigma: number of standard deviations for the ellipse size (default: 3).
+        lw: line width of the ellipse edges.
+        alpha: transparency of the ellipses.
+        axes: matplotlib axes to plot on. If None, uses current figure axes.
+    """
+    if axes is None:
+        axes = plt.gcf().axes
+
+    # Handle single axis case
+    if not isinstance(axes, list):
+        axes = [axes]
+        kpts = [kpts]
+        covariances = [covariances]
+
+    # Ensure inputs are lists
+    if not isinstance(kpts, list):
+        kpts = [kpts]
+    if not isinstance(covariances, list):
+        covariances = [covariances]
+
+    for ax, keypoints, covs in zip(axes, kpts, covariances):
+        # Convert to numpy if needed
+        if isinstance(keypoints, torch.Tensor):
+            keypoints = keypoints.cpu().numpy()
+        if isinstance(covs, torch.Tensor):
+            covs = covs.cpu().numpy()
+
+        if len(keypoints) == 0:
+            continue
+
+        # Prepare arrays for batch processing
+        n_points = len(keypoints)
+        widths = np.zeros(n_points)
+        heights = np.zeros(n_points)
+        angles = np.zeros(n_points)
+
+        # Vectorized eigenvalue decomposition and ellipse parameter calculation
+        for i, (mean, cov) in enumerate(zip(keypoints, covs)):
+            # Eigenvalue decomposition
+            vals, vecs = np.linalg.eigh(cov)
+
+            # Sort eigenvalues and eigenvectors in descending order
+            order = vals.argsort()[::-1]
+            vals, vecs = vals[order], vecs[:, order]
+
+            # Calculate ellipse parameters
+            # Ensure positive eigenvalues for numerical stability
+            vals = np.maximum(vals, 1e-8)
+            angle = np.degrees(np.arctan2(vecs[1, 0], vecs[0, 0]))
+            width = sigma * 2 * np.sqrt(vals[0])
+            height = sigma * 2 * np.sqrt(vals[1])
+
+            widths[i] = width
+            heights[i] = height
+            angles[i] = angle
+
+        # Handle colors
+        if colors is None:
+            # Use tab10 colormap cycling through colors
+            cmap = plt.cm.tab10
+            color_list = [cmap(i % 10) for i in range(n_points)]
+        elif isinstance(colors, str):
+            color_list = [colors] * n_points
+        elif callable(colors):  # colormap
+            color_list = [colors(i % 10) for i in range(n_points)]
+        else:
+            color_list = colors
+
+        # Create ellipse collection for fast rendering
+        ellipses = EllipseCollection(
+            widths=widths,
+            heights=heights,
+            angles=angles,
+            offsets=keypoints,
+            units="xy",
+            edgecolors=color_list,
+            facecolors=color_list,
+            linewidths=lw,
+            alpha=alpha,
+            transOffset=ax.transData,
+        )
+
+        ax.add_collection(ellipses)
 
 
 def plot_matches(kpts0, kpts1, color=None, lw=1.5, ps=4, a=1.0, labels=None, axes=None):
