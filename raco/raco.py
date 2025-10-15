@@ -259,6 +259,8 @@ class RaCo(Extractor):
         subpixel_temp: float = DEFAULT_SUBPIXEL_TEMP,
     ) -> tuple:
         """Sample keypoints using NMS and optional subpixel refinement."""
+        # Modified from DaD https://github.com/Parskatt/dad
+        
         if num_kpts is None:
             num_kpts = self.conf.max_num_keypoints
 
