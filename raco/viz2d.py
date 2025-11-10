@@ -3,6 +3,8 @@
 1) Plot images with `plot_images`.
 2) Call `plot_keypoints` or `plot_matches` any number of times.
 3) Optionally: save a .png or .pdf plot (nice in papers!) with `save_plot`.
+
+From glue-factory https://github.com/cvg/glue-factory/blob/main/gluefactory/visualization/viz2d.py
 """
 
 import matplotlib

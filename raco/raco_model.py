@@ -132,8 +132,8 @@ def conv3x3(in_planes, out_planes, stride=1, kernel_size=3):
 
 
 class RacoModel(nn.Module):  # Raco multiscale architecture with standard convolutions
-    # Modified version of ALIKED-n16 https://github.com/Shiaoming/ALIKED
-    
+    # Modified architecture of ALIKED-n16 https://github.com/Shiaoming/ALIKED
+
     default_conf = {
         "name": "raco_model",
         "ranker": True,
@@ -198,6 +198,7 @@ class RacoModel(nn.Module):  # Raco multiscale architecture with standard convol
         ]
         self.ranker_head = nn.Sequential(*ranker_layers)
 
+        # Covariance estimator head
         modules = []
         in_channels = dim
         for out_channels in [64, 32, 32]:
@@ -250,10 +251,6 @@ class RacoModel(nn.Module):  # Raco multiscale architecture with standard convol
         x4_up = self.upsample32(x4)  # B x dim//4 x H x W
         x1234 = torch.cat([x1, x2_up, x3_up, x4_up], dim=1)
 
-        # TODO(Abhiram): only for training subpixel covariances!
-        # detached_x1234 = x1234.detach()
-        detached_x1234 = x1234
-
         # score head
         score_map = self.score_head(x1234)
         score_map = padder.unpad(score_map)
@@ -266,7 +263,7 @@ class RacoModel(nn.Module):  # Raco multiscale architecture with standard convol
             # B x 1 x H x W
 
         if self.run_covariance_estimator:
-            cov_maps = self.covariance_estimator_head(detached_x1234)
+            cov_maps = self.covariance_estimator_head(x1234)
             cov_maps = padder.unpad(cov_maps)
             # B x 3 x H x W
 
