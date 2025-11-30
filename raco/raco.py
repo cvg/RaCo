@@ -309,22 +309,22 @@ class RaCo(Extractor):
         raw_score_map, ranker_map, cov_maps = self.model(image)
 
         # Compute probability maps using batchwise global softmax normalization
-        logx = nn.functional.log_softmax(raw_score_map.flatten(1), dim=1).reshape(
-            raw_score_map.size()
-        )
-        x = torch.exp(logx)
+        log_keypoint_probs = nn.functional.log_softmax(
+            raw_score_map.flatten(1), dim=1
+        ).reshape(raw_score_map.size())
+        keypoint_probs = torch.exp(log_keypoint_probs)
 
         # Sample keypoints
         kpts = None
         idxs, kpts = self._sampling(
-            keypoint_probs=x,
+            keypoint_probs=keypoint_probs,
             nms_radius=self.conf.nms_radius,
             raw_logits=raw_score_map,
             subpixel=self.conf.subpixel_sampling,
         )
 
-        B, _, H, W = x.size()
-        probs = x.view(B, -1).gather(1, idxs.view(B, -1))
+        B, _, H, W = keypoint_probs.size()
+        probs = keypoint_probs.view(B, -1).gather(1, idxs.view(B, -1))
 
         # Apply detection threshold if configured
         if self.conf.detection_threshold > 0:
