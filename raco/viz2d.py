@@ -22,6 +22,12 @@ def cm_RdGn(x):
     return np.clip(c, 0, 1)
 
 
+def cm_GnRd(x):
+    """Custom colormap: green (0) -> yellow (0.5) -> red (1)."""
+    x = np.clip(x, 0, 1)
+    return cm_RdGn(1 - x)
+
+
 def cm_BlRdGn(x_):
     """Custom colormap: blue (-1) -> red (0.0) -> green (1)."""
     x = np.clip(x_, 0, 1)[..., None] * 2
@@ -98,6 +104,7 @@ def plot_images(imgs, titles=None, cmaps="gray", dpi=100, pad=0.5, adaptive=True
         if titles:
             ax[i].set_title(titles[i])
     fig.tight_layout(pad=pad)
+    return ax
 
 
 def plot_keypoints(kpts, colors="lime", ps=4, axes=None, a=1.0):

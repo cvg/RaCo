@@ -1,4 +1,4 @@
-# From LightGlue https://github.com/cvg/LightGlue/blob/main/lightglue/utils.py
+# Adapted from LightGlue https://github.com/cvg/LightGlue/blob/main/lightglue/utils.py
 
 import collections.abc as collections
 from pathlib import Path
@@ -174,3 +174,9 @@ def match_pair(
     # remove batch dim and move to target device
     feats0, feats1, matches01 = [batch_to_device(rbd(x), device) for x in data]
     return feats0, feats1, matches01
+
+
+def rank_from_scores(scores: torch.Tensor) -> torch.Tensor:
+    """Convert scores to ranks (1 is highest rank)"""
+    ranks = torch.argsort(torch.argsort(-scores, dim=-1), dim=-1) + 1
+    return ranks
