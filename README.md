@@ -57,51 +57,6 @@ plt.suptitle("RaCo Keypoints", fontsize=16, y=0.95)
 plt.tight_layout()
 ```
 
-### Advanced Visualization with Uncertainty Ellipses
-
-```python
-ax = viz2d.plot_images([image])
-
-# Subsample keypoints for cleaner visualization
-subsample = 10
-idxs = torch.randperm(
-    len(output["keypoints"][0]), generator=torch.Generator().manual_seed(42)
-)[::subsample]
-
-keypoints = output["keypoints"][0]
-subsampled_keypoints = output["keypoints"][0][idxs]
-subsampled_covariances = output["covariances"][0][idxs]
-
-# Plot uncertainty ellipses
-viz2d.plot_covariance_ellipses(
-    [subsampled_keypoints],
-    [subsampled_covariances],
-    axes=ax,
-    sigma=20,
-)
-
-# Plot all keypoints
-viz2d.plot_keypoints([keypoints], axes=ax)
-
-plt.suptitle("RaCo Keypoint Detection with Uncertainties", fontsize=16, y=0.95)
-plt.tight_layout()
-```
-
-## Configuration
-
-RaCo can be configured with various parameters:
-
-```python
-extractor = RaCo(
-    max_num_keypoints=1024,
-    detection_threshold=0.0001,
-    nms_radius=3,
-    subpixel_sampling=True,
-    ranker=True,
-    covariance_estimator=True
-)
-```
-
 ## Demo
 
 Check out the [`demo.ipynb`](demo.ipynb) notebook for a complete walkthrough showing:
@@ -109,7 +64,7 @@ Check out the [`demo.ipynb`](demo.ipynb) notebook for a complete walkthrough sho
 - Basic keypoint extraction
 - Visualization of detected keypoints
 - Uncertainty estimation with covariance ellipses
-- Advanced visualization techniques
+- Visualization of the ranking of keypoints
 
 ## Requirements
 
@@ -126,7 +81,7 @@ If you use RaCo in your research, please cite:
 
 ```bibtex
 @article{raco2025,
-  title={RaCo: Ranking and Covariance for Robust Keypoint Detection},
+  title={RaCo: Ranking and Covariance for Practical Learned Keypoints},
   author={},
   journal={},
   year={2025}
@@ -135,12 +90,5 @@ If you use RaCo in your research, please cite:
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 see the [LICENSE](LICENSE) file for details.
 
-## Contributing
-
-We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for details.
-
-## Support
-
-For questions and support, please open an issue on our [GitHub repository](https://github.com/cvg/RaCo/issues).

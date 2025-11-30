@@ -17,14 +17,6 @@ from .utils import Extractor
 
 logger = logging.getLogger(__name__)
 
-# Configuration constants
-DEFAULT_DETECTION_THRESHOLD = -1
-DEFAULT_NMS_RADIUS = 3
-DEFAULT_MAX_KEYPOINTS = 512
-DEFAULT_SUBPIXEL_TEMP = 0.5
-IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD = [0.229, 0.224, 0.225]
-
 
 class TanhTimesN(nn.Module):
     """
@@ -74,7 +66,7 @@ def _get_grid(
     return x1_n
 
 
-def _extract_patches_from_inds(
+def _extract_patches_from_indices(
     x: torch.Tensor,
     inds: torch.Tensor,
     patch_size: int,
@@ -120,18 +112,13 @@ def _covariance_matrix_from_cholesky_elements(
     Returns:
         Tensor of shape (..., 2, 2) representing the covariance matrix.
     """
-    L11 = cholesky_elements_vec[..., 0]
-    L21 = cholesky_elements_vec[..., 1]
-    L22 = cholesky_elements_vec[..., 2]
+    L11, L21, L22 = torch.unbind(cholesky_elements_vec, dim=-1)
+    zeros = torch.zeros_like(L11)
 
-    # Create the lower triangular L matrix (batch-wise) The elements L11 and L22 must be positive.
-    L = torch.zeros(
-        cholesky_elements_vec.shape[:-1] + (2, 2),
-        device=cholesky_elements_vec.device,
+    # L = [[L11, 0], [L21, L22]]
+    L = torch.stack(
+        [torch.stack([L11, zeros], dim=-1), torch.stack([L21, L22], dim=-1)], dim=-2
     )
-    L[..., 0, 0] = L11
-    L[..., 1, 0] = L21
-    L[..., 1, 1] = L22
 
     # Compute Sigma = L @ L.T
     if cholesky_elements_vec.dim() > 1:  # If there's a batch or N dimension
@@ -177,7 +164,7 @@ def _compute_subpixel_offsets(
     nms_radius: int,
     H: int,
     W: int,
-    subpixel_temp: float = DEFAULT_SUBPIXEL_TEMP,
+    subpixel_temp: float = 0.5,
 ) -> torch.Tensor:
     """Compute subpixel offsets for keypoints using local patch softmax."""
     B = raw_logits.shape[0]
@@ -189,7 +176,7 @@ def _compute_subpixel_offsets(
     offsets[..., 0] = offsets[..., 0] * nms_radius / W
     offsets[..., 1] = offsets[..., 1] * nms_radius / H
 
-    keypoint_patch_scores = _extract_patches_from_inds(
+    keypoint_patch_scores = _extract_patches_from_indices(
         raw_logits.squeeze(1), inds, nms_radius
     )
     keypoint_patch_probs = (keypoint_patch_scores / subpixel_temp).softmax(dim=1)
@@ -202,14 +189,17 @@ class RaCo(Extractor):
         "name": "raco",
         "weights": files("raco") / "raco.pth",
         "trainable": False,
-        "max_num_keypoints": DEFAULT_MAX_KEYPOINTS,
-        "nms_radius": DEFAULT_NMS_RADIUS,
+        "max_num_keypoints": 512,
+        "nms_radius": 3,
         "subpixel_sampling": True,
-        "detection_threshold": DEFAULT_DETECTION_THRESHOLD,
+        "subpixel_temp": 0.5,
+        "detection_threshold": -1,
         "ranker": True,
         "covariance_estimator": True,
+        "imagenet_mean": [0.485, 0.456, 0.406],
+        "imagenet_std": [0.229, 0.224, 0.225],
     }
-    
+
     preprocess_conf = {
         "resize": None,
     }
@@ -217,7 +207,7 @@ class RaCo(Extractor):
     def __init__(self, **conf) -> None:
         """Initialize the RaCo model with given configuration."""
         super().__init__(**conf)
-        
+
         self.conf = SimpleNamespace(**{**self.default_conf, **conf})
 
         # Validate configuration
@@ -229,7 +219,9 @@ class RaCo(Extractor):
             )
 
         # Setup ImageNet normalization
-        self.normalizer = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+        self.normalizer = transforms.Normalize(
+            mean=self.conf.imagenet_mean, std=self.conf.imagenet_std
+        )
 
         # Initialize model
         self.model = RacoModel(
@@ -256,13 +248,15 @@ class RaCo(Extractor):
         num_kpts: Optional[int] = None,
         raw_logits: Optional[torch.Tensor] = None,
         subpixel: bool = False,
-        subpixel_temp: float = DEFAULT_SUBPIXEL_TEMP,
+        subpixel_temp: Optional[float] = None,
     ) -> tuple:
         """Sample keypoints using NMS and optional subpixel refinement."""
         # Modified from DaD https://github.com/Parskatt/dad
-        
+
         if num_kpts is None:
             num_kpts = self.conf.max_num_keypoints
+        if subpixel_temp is None:
+            subpixel_temp = self.conf.subpixel_temp
 
         B, C, H, W = keypoint_probs.size()
         device = keypoint_probs.device
@@ -280,28 +274,28 @@ class RaCo(Extractor):
 
         # Sample top keypoints
         inds = torch.topk(keypoint_probs.reshape(B, H * W), k=num_kpts).indices
-        kps = torch.gather(grid, dim=1, index=inds[..., None].expand(B, num_kpts, 2))
+        kpts = torch.gather(grid, dim=1, index=inds[..., None].expand(B, num_kpts, 2))
 
         # Compute subpixel refinement if requested
         if subpixel and raw_logits is not None:
             keypoint_offsets = _compute_subpixel_offsets(
                 raw_logits, inds, nms_radius, H, W, subpixel_temp
             )
-            kps_subpixel = kps + keypoint_offsets
-            kps_subpixel = _to_pixel_coords(kps_subpixel, H, W) - 0.5
+            kpts_subpixel = kpts + keypoint_offsets
+            kpts_subpixel = _to_pixel_coords(kpts_subpixel, H, W) - 0.5
 
         # Convert to pixel coordinates
-        kps = _to_pixel_coords(kps, H, W) - 0.5
+        kpts = _to_pixel_coords(kpts, H, W) - 0.5
 
         # Convert to flat indices
-        idxs = kps[..., 1] * W + kps[..., 0]
+        idxs = kpts[..., 1] * W + kpts[..., 0]
         idxs = idxs.long()
         idxs = torch.clamp(idxs, min=0, max=W * H - 1)
 
         if subpixel and raw_logits is not None:
-            kps = kps_subpixel
+            kpts = kpts_subpixel
 
-        return idxs, kps
+        return idxs, kpts
 
     def forward(self, data: dict) -> dict:
         """Forward pass through the RaCo model."""
@@ -321,8 +315,8 @@ class RaCo(Extractor):
         x = torch.exp(logx)
 
         # Sample keypoints
-        kps = None
-        idxs, kps = self._sampling(
+        kpts = None
+        idxs, kpts = self._sampling(
             keypoint_probs=x,
             nms_radius=self.conf.nms_radius,
             raw_logits=raw_score_map,
@@ -341,7 +335,7 @@ class RaCo(Extractor):
         # Convert indices to coordinates
         xs = idxs % W
         ys = idxs // W
-        keypoints = torch.stack([xs, ys], dim=-1).float() if kps is None else kps
+        keypoints = torch.stack([xs, ys], dim=-1).float() if kpts is None else kpts
 
         # Build output dictionary, excluding None values
         out_dict = {
@@ -384,5 +378,5 @@ class RaCo(Extractor):
 
 
 if __name__ == "__main__":
-    model = RaCo(RaCo.default_conf)
+    model = RaCo({})
     print(model)

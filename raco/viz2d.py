@@ -1,13 +1,12 @@
 """
 2D visualization primitives based on Matplotlib.
 1) Plot images with `plot_images`.
-2) Call `plot_keypoints` or `plot_matches` any number of times.
+2) Call `plot_keypoints`
 3) Optionally: save a .png or .pdf plot (nice in papers!) with `save_plot`.
 
 From glue-factory https://github.com/cvg/glue-factory/blob/main/gluefactory/visualization/viz2d.py
 """
 
-import matplotlib
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 from matplotlib.collections import EllipseCollection
@@ -217,64 +216,6 @@ def plot_covariance_ellipses(
         )
 
         ax.add_collection(ellipses)
-
-
-def plot_matches(kpts0, kpts1, color=None, lw=1.5, ps=4, a=1.0, labels=None, axes=None):
-    """Plot matches for a pair of existing images.
-    Args:
-        kpts0, kpts1: corresponding keypoints of size (N, 2).
-        color: color of each match, string or RGB tuple. Random if not given.
-        lw: width of the lines.
-        ps: size of the end points (no endpoint if ps=0)
-        indices: indices of the images to draw the matches on.
-        a: alpha opacity of the match lines.
-    """
-    fig = plt.gcf()
-    if axes is None:
-        ax = fig.axes
-        ax0, ax1 = ax[0], ax[1]
-    else:
-        ax0, ax1 = axes
-    if isinstance(kpts0, torch.Tensor):
-        kpts0 = kpts0.cpu().numpy()
-    if isinstance(kpts1, torch.Tensor):
-        kpts1 = kpts1.cpu().numpy()
-    assert len(kpts0) == len(kpts1)
-    if color is None:
-        kpts_norm = (kpts0 - kpts0.min(axis=0, keepdims=True)) / np.ptp(
-            kpts0, axis=0, keepdims=True
-        )
-        color = cm_grad2d(kpts_norm)  # gradient color
-    elif len(color) > 0 and not isinstance(color[0], (tuple, list)):
-        color = [color] * len(kpts0)
-
-    if lw > 0:
-        for i in range(len(kpts0)):
-            line = matplotlib.patches.ConnectionPatch(
-                xyA=(kpts0[i, 0], kpts0[i, 1]),
-                xyB=(kpts1[i, 0], kpts1[i, 1]),
-                coordsA=ax0.transData,
-                coordsB=ax1.transData,
-                axesA=ax0,
-                axesB=ax1,
-                zorder=1,
-                color=color[i],
-                linewidth=lw,
-                clip_on=True,
-                alpha=a,
-                label=None if labels is None else labels[i],
-                picker=5.0,
-            )
-            line.set_annotation_clip(True)
-            fig.add_artist(line)
-
-    # freeze the axes to prevent the transform to change
-    ax0.autoscale(enable=False)
-    ax1.autoscale(enable=False)
-
-    if ps > 0:
-        ax0.scatter(kpts0[:, 0], kpts0[:, 1], c=color, s=ps)
-        ax1.scatter(kpts1[:, 0], kpts1[:, 1], c=color, s=ps)
 
 
 def add_text(
