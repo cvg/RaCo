@@ -187,7 +187,7 @@ def _compute_subpixel_offsets(
 class RaCo(Extractor):
     default_conf = {
         "name": "raco",
-        "weights": files("raco") / "raco.pth",
+        "weights": files("raco") / "raco_fixed_covs.pth",
         "trainable": False,
         "max_num_keypoints": 512,
         "nms_radius": 3,
