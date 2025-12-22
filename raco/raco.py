@@ -347,7 +347,30 @@ class RaCo(Extractor):
         # Add optional outputs only if they exist
         if self.conf.ranker and ranker_map is not None:
             # Higher the ranker score, better the keypoint
-            ranker_scores = ranker_map.reshape(B, -1).gather(1, idxs.view(B, -1))
+            if self.conf.subpixel_sampling:
+                grid_coords = torch.stack(
+                    [
+                        2.0 * keypoints[..., 0] / (W - 1) - 1.0,  # x
+                        2.0 * keypoints[..., 1] / (H - 1) - 1.0,  # y
+                    ],
+                    dim=-1,
+                ).unsqueeze(
+                    2
+                )  # (B, N, 1, 2)
+
+                ranker_scores = (
+                    F.grid_sample(
+                        ranker_map,
+                        grid_coords,
+                        mode="bilinear",
+                        padding_mode="border",
+                        align_corners=True,
+                    )
+                    .squeeze(-1)
+                    .squeeze(1)
+                )  # (B, N)
+            else:
+                ranker_scores = ranker_map.reshape(B, -1).gather(1, idxs.view(B, -1))
             out_dict["ranker_scores"] = ranker_scores.view(B, -1)  # (B, N)
 
         if self.conf.covariance_estimator and cov_maps is not None:
@@ -363,12 +386,36 @@ class RaCo(Extractor):
                 ],
                 dim=1,
             )
+
             # Sample the cholesky elements at the keypoints
-            cholesky_scores = (
-                processed_cov_maps.view(B, 3, -1)
-                .gather(2, idxs.unsqueeze(1).expand(B, 3, -1))
-                .permute(0, 2, 1)
-            )  # (B, N, 3)
+            if self.conf.subpixel_sampling:
+                grid_coords = torch.stack(
+                    [
+                        2.0 * keypoints[..., 0] / (W - 1) - 1.0,  # x
+                        2.0 * keypoints[..., 1] / (H - 1) - 1.0,  # y
+                    ],
+                    dim=-1,
+                ).unsqueeze(
+                    2
+                )  # (B, N, 1, 2)
+
+                cholesky_scores = (
+                    F.grid_sample(
+                        processed_cov_maps,
+                        grid_coords,
+                        mode="bilinear",
+                        padding_mode="border",
+                        align_corners=True,
+                    )
+                    .squeeze(-1)
+                    .permute(0, 2, 1)
+                )  # (B, N, 3)
+            else:
+                cholesky_scores = (
+                    processed_cov_maps.view(B, 3, -1)
+                    .gather(2, idxs.unsqueeze(1).expand(B, 3, -1))
+                    .permute(0, 2, 1)
+                )  # (B, N, 3)
 
             covariances = _covariance_matrix_from_cholesky_elements(cholesky_scores)
 
