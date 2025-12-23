@@ -167,16 +167,20 @@ def _compute_subpixel_offsets(
     subpixel_temp: float = 0.5,
 ) -> torch.Tensor:
     """Compute subpixel offsets for keypoints using local patch softmax.
-    
+
     Returns offsets in pixel coordinates (not normalized).
     """
     B = raw_logits.shape[0]
     device = raw_logits.device
 
     # Create pixel-space offsets directly
-    offset_range = torch.linspace(-(nms_radius - 1) / 2, (nms_radius - 1) / 2, nms_radius, device=device)
+    offset_range = torch.linspace(
+        -(nms_radius - 1) / 2, (nms_radius - 1) / 2, nms_radius, device=device
+    )
     offset_grid = torch.meshgrid(offset_range, offset_range, indexing="ij")
-    offsets = torch.stack((offset_grid[1], offset_grid[0]), dim=-1).reshape(nms_radius**2, 2)
+    offsets = torch.stack((offset_grid[1], offset_grid[0]), dim=-1).reshape(
+        nms_radius**2, 2
+    )
     offsets = offsets.unsqueeze(0).expand(B, -1, -1)  # (B, nms_radius**2, 2)
 
     keypoint_patch_scores = _extract_patches_from_indices(
@@ -185,6 +189,66 @@ def _compute_subpixel_offsets(
     keypoint_patch_probs = (keypoint_patch_scores / subpixel_temp).softmax(dim=1)
     keypoint_offsets = torch.einsum("bkn, bkd ->bnd", keypoint_patch_probs, offsets)
     return keypoint_offsets
+
+
+def _sample_at_keypoints(
+    feature_map: torch.Tensor,
+    keypoints: torch.Tensor,
+    H: int,
+    W: int,
+    use_subpixel: bool,
+) -> torch.Tensor:
+    """
+    Sample feature map values at keypoint locations using either bilinear interpolation
+    or direct indexing.
+
+    Args:
+        feature_map: Feature map of shape (B, C, H, W)
+        keypoints: Keypoint locations in pixel coordinates [0, W-1] x [0, H-1], shape (B, N, 2)
+        H: Feature map height
+        W: Feature map width
+        use_subpixel: If True, use bilinear interpolation; if False, use direct indexing
+
+    Returns:
+        Sampled features of shape (B, N, C) if C > 1, or (B, N) if C == 1
+    """
+    B, C = feature_map.shape[:2]
+
+    if use_subpixel:
+        # For subpixel keypoints, use bilinear interpolation
+        grid_coords = torch.stack(
+            [
+                2.0 * keypoints[..., 0] / (W - 1) - 1.0,  # x
+                2.0 * keypoints[..., 1] / (H - 1) - 1.0,  # y
+            ],
+            dim=-1,
+        ).unsqueeze(
+            2
+        )  # (B, N, 1, 2)
+
+        sampled = F.grid_sample(
+            feature_map,
+            grid_coords,
+            mode="bilinear",
+            padding_mode="border",
+            align_corners=True,
+        ).squeeze(
+            -1
+        )  # (B, C, N)
+    else:
+        # For integer keypoints, use direct indexing
+        idxs = (
+            torch.round(keypoints[..., 1]).long() * W
+            + torch.round(keypoints[..., 0]).long()
+        )
+        idxs = torch.clamp(idxs, min=0, max=W * H - 1)
+        sampled = feature_map.view(B, C, -1).gather(
+            2, idxs.unsqueeze(1).expand(B, C, -1)
+        )  # (B, C, N)
+
+    # Convert from (B, C, N) to (B, N, C), then squeeze if single channel
+    sampled = sampled.permute(0, 2, 1)  # (B, N, C)
+    return sampled.squeeze(-1) if C == 1 else sampled  # (B, N) or (B, N, C)
 
 
 class RaCo(Extractor):
@@ -252,9 +316,9 @@ class RaCo(Extractor):
         raw_logits: Optional[torch.Tensor] = None,
         subpixel: bool = False,
         subpixel_temp: Optional[float] = None,
-    ) -> tuple:
+    ) -> torch.Tensor:
         """Sample keypoints using NMS and optional subpixel refinement.
-        
+
         Returns keypoints in pixel coordinates [0, W-1] x [0, H-1].
         """
         # Modified from DaD https://github.com/Parskatt/dad
@@ -292,11 +356,7 @@ class RaCo(Extractor):
             )
             kpts = kpts + keypoint_offsets  # Add pixel-space offsets
 
-        # Convert to flat indices (for integer-based gathering)
-        idxs = torch.round(kpts[..., 1]).long() * W + torch.round(kpts[..., 0]).long()
-        idxs = torch.clamp(idxs, min=0, max=W * H - 1)
-
-        return idxs, kpts
+        return kpts
 
     def forward(self, data: dict) -> dict:
         """Forward pass through the RaCo model."""
@@ -307,7 +367,7 @@ class RaCo(Extractor):
         image = self.normalizer(image)
 
         # Forward through model
-        raw_score_map, ranker_map, cov_maps = self.model(image)
+        raw_score_map, ranker_map, cholesky_maps = self.model(image)
 
         # Compute probability maps using batchwise global softmax normalization
         log_keypoint_probs = nn.functional.log_softmax(
@@ -315,9 +375,8 @@ class RaCo(Extractor):
         ).reshape(raw_score_map.size())
         keypoint_probs = torch.exp(log_keypoint_probs)
 
-        # Sample keypoints
-        kpts = None
-        idxs, kpts = self._sampling(
+        # Sample keypoints - returns pixel coordinates [0, W-1] x [0, H-1]
+        keypoints = self._sampling(
             keypoint_probs=keypoint_probs,
             nms_radius=self.conf.nms_radius,
             raw_logits=raw_score_map,
@@ -325,93 +384,51 @@ class RaCo(Extractor):
         )
 
         B, _, H, W = keypoint_probs.size()
-        probs = keypoint_probs.view(B, -1).gather(1, idxs.view(B, -1))
+
+        # Sample scores at keypoint locations
+        probs = _sample_at_keypoints(
+            keypoint_probs, keypoints, H, W, self.conf.subpixel_sampling
+        )  # (B, N)
 
         # Apply detection threshold if configured
         if self.conf.detection_threshold > 0:
             mask = probs > self.conf.detection_threshold
-            idxs = idxs[mask].view(idxs.shape[0], -1)
+            keypoints = keypoints[mask].view(keypoints.shape[0], -1, 2)
             probs = probs[mask].view(probs.shape[0], -1)
 
-        # Convert indices to coordinates
-        xs = idxs % W
-        ys = idxs // W
-        keypoints = torch.stack([xs, ys], dim=-1).float() if kpts is None else kpts
-
-        # Build output dictionary, excluding None values
+        # Build output dictionary
         out_dict = {
             # Points: add 0.5 to convert from [0, W-1] to pixel centers [0.5, W-0.5]
             "keypoints": keypoints + 0.5,  # (B, N, 2)
             "keypoint_scores": probs,  # (B, N)
         }
 
-        # Compute normalized grid coordinates once for grid_sample operations (if needed)
-        grid_coords = None
-        if self.conf.subpixel_sampling and (
-            (self.conf.ranker and ranker_map is not None) or 
-            (self.conf.covariance_estimator and cov_maps is not None)
-        ):
-            # Convert keypoints from [0, W-1] x [0, H-1] to normalized coords [-1, 1]
-            grid_coords = torch.stack(
-                [
-                    2.0 * keypoints[..., 0] / (W - 1) - 1.0,  # x
-                    2.0 * keypoints[..., 1] / (H - 1) - 1.0,  # y
-                ],
-                dim=-1,
-            ).unsqueeze(2)  # (B, N, 1, 2)
-
         # Add optional outputs only if they exist
         if self.conf.ranker and ranker_map is not None:
             # Higher the ranker score, better the keypoint
-            if self.conf.subpixel_sampling:
-                ranker_scores = (
-                    F.grid_sample(
-                        ranker_map,
-                        grid_coords,
-                        mode="bilinear",
-                        padding_mode="border",
-                        align_corners=True,
-                    )
-                    .squeeze(-1)
-                    .squeeze(1)
-                )  # (B, N)
-            else:
-                ranker_scores = ranker_map.reshape(B, -1).gather(1, idxs.view(B, -1))
-            out_dict["ranker_scores"] = ranker_scores.view(B, -1)  # (B, N)
+            ranker_scores = _sample_at_keypoints(
+                ranker_map, keypoints, H, W, self.conf.subpixel_sampling
+            )  # (B, N)
+            out_dict["ranker_scores"] = ranker_scores
 
-        if self.conf.covariance_estimator and cov_maps is not None:
+        if self.conf.covariance_estimator and cholesky_maps is not None:
             # Apply activations to ensure L11 and L22 are positive
-            # cov_maps has shape (B, 3, H, W) with [L11_prime, L21, L22_prime]
+            # cholesky_maps has shape (B, 3, H, W) with [L11_prime, L21, L22_prime]
             var_activation = nn.Softplus()
 
-            processed_cov_maps = torch.stack(
+            processed_cholesky_maps = torch.stack(
                 [
-                    var_activation(cov_maps[:, 0, ...]),  # L11
-                    cov_maps[:, 1, ...],  # L21 (no constraint)
-                    var_activation(cov_maps[:, 2, ...]),  # L22
+                    var_activation(cholesky_maps[:, 0, ...]),  # L11
+                    cholesky_maps[:, 1, ...],  # L21 (no constraint)
+                    var_activation(cholesky_maps[:, 2, ...]),  # L22
                 ],
                 dim=1,
             )
 
             # Sample the cholesky elements at the keypoints
-            if self.conf.subpixel_sampling:
-                cholesky_scores = (
-                    F.grid_sample(
-                        processed_cov_maps,
-                        grid_coords,
-                        mode="bilinear",
-                        padding_mode="border",
-                        align_corners=True,
-                    )
-                    .squeeze(-1)
-                    .permute(0, 2, 1)
-                )  # (B, N, 3)
-            else:
-                cholesky_scores = (
-                    processed_cov_maps.view(B, 3, -1)
-                    .gather(2, idxs.unsqueeze(1).expand(B, 3, -1))
-                    .permute(0, 2, 1)
-                )  # (B, N, 3)
+            cholesky_scores = _sample_at_keypoints(
+                processed_cholesky_maps, keypoints, H, W, self.conf.subpixel_sampling
+            )  # (B, N, 3)
 
             covariances = _covariance_matrix_from_cholesky_elements(cholesky_scores)
 

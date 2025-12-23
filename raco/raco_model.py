@@ -256,15 +256,15 @@ class RacoModel(nn.Module):  # Raco multiscale architecture with standard convol
         score_map = padder.unpad(score_map)
         # B x 1 x H x W
 
-        ranker_map, cov_maps = None, None
+        ranker_map, cholesky_maps = None, None
         if self.run_ranker:
             ranker_map = self.ranker_head(x)
             ranker_map = padder.unpad(ranker_map)
             # B x 1 x H x W
 
         if self.run_covariance_estimator:
-            cov_maps = self.covariance_estimator_head(x1234)
-            cov_maps = padder.unpad(cov_maps)
+            cholesky_maps = self.covariance_estimator_head(x1234)
+            cholesky_maps = padder.unpad(cholesky_maps)
             # B x 3 x H x W
 
-        return score_map, ranker_map, cov_maps
+        return score_map, ranker_map, cholesky_maps
