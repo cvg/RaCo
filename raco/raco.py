@@ -59,7 +59,7 @@ def _get_grid(
         Grid tensor of shape (B, H*W, 2) with normalized coordinates in [-1, 1]
     """
     x1_n = torch.meshgrid(
-        *[torch.linspace(-1 + 1 / n, 1 - 1 / n, n, device=device) for n in (B, H, W)],
+        *[torch.linspace(-1, 1, n, device=device) for n in (B, H, W)],
         indexing="ij",
     )
     x1_n = torch.stack((x1_n[2], x1_n[1]), dim=-1).reshape(B, H * W, 2)
@@ -136,7 +136,7 @@ def _to_pixel_coords(
     w: int,
 ) -> torch.Tensor:
     """
-    Convert normalized coordinates [-1, 1] to pixel coordinates.
+    Convert normalized coordinates [-1, 1] to pixel coordinates [0, W-1] x [0, H-1].
 
     Args:
         normalized_coords: Tensor of shape (..., 2) with normalized coordinates
@@ -144,14 +144,14 @@ def _to_pixel_coords(
         w: Image width
 
     Returns:
-        Pixel coordinates tensor of same shape
+        Pixel coordinates tensor of same shape, in range [0, W-1] x [0, H-1]
     """
     if normalized_coords.shape[-1] != 2:
         raise ValueError(f"Expected shape (..., 2), but got {normalized_coords.shape}")
     pixel_coords = torch.stack(
         (
-            w * (normalized_coords[..., 0] + 1) / 2,
-            h * (normalized_coords[..., 1] + 1) / 2,
+            (w - 1) * (normalized_coords[..., 0] + 1) / 2,
+            (h - 1) * (normalized_coords[..., 1] + 1) / 2,
         ),
         dim=-1,
     )
@@ -166,15 +166,18 @@ def _compute_subpixel_offsets(
     W: int,
     subpixel_temp: float = 0.5,
 ) -> torch.Tensor:
-    """Compute subpixel offsets for keypoints using local patch softmax."""
+    """Compute subpixel offsets for keypoints using local patch softmax.
+    
+    Returns offsets in pixel coordinates (not normalized).
+    """
     B = raw_logits.shape[0]
     device = raw_logits.device
 
-    offsets = _get_grid(B, nms_radius, nms_radius, device=device).reshape(
-        B, nms_radius**2, 2
-    )
-    offsets[..., 0] = offsets[..., 0] * nms_radius / W
-    offsets[..., 1] = offsets[..., 1] * nms_radius / H
+    # Create pixel-space offsets directly
+    offset_range = torch.linspace(-(nms_radius - 1) / 2, (nms_radius - 1) / 2, nms_radius, device=device)
+    offset_grid = torch.meshgrid(offset_range, offset_range, indexing="ij")
+    offsets = torch.stack((offset_grid[1], offset_grid[0]), dim=-1).reshape(nms_radius**2, 2)
+    offsets = offsets.unsqueeze(0).expand(B, -1, -1)  # (B, nms_radius**2, 2)
 
     keypoint_patch_scores = _extract_patches_from_indices(
         raw_logits.squeeze(1), inds, nms_radius
@@ -250,7 +253,10 @@ class RaCo(Extractor):
         subpixel: bool = False,
         subpixel_temp: Optional[float] = None,
     ) -> tuple:
-        """Sample keypoints using NMS and optional subpixel refinement."""
+        """Sample keypoints using NMS and optional subpixel refinement.
+        
+        Returns keypoints in pixel coordinates [0, W-1] x [0, H-1].
+        """
         # Modified from DaD https://github.com/Parskatt/dad
 
         if num_kpts is None:
@@ -261,7 +267,7 @@ class RaCo(Extractor):
         B, C, H, W = keypoint_probs.size()
         device = keypoint_probs.device
 
-        # Generate coordinate grid
+        # Generate coordinate grid in normalized space [-1, 1]
         grid = _get_grid(B, H, W, device=device).reshape(B, H * W, 2)
 
         # Apply NMS
@@ -276,24 +282,19 @@ class RaCo(Extractor):
         inds = torch.topk(keypoint_probs.reshape(B, H * W), k=num_kpts).indices
         kpts = torch.gather(grid, dim=1, index=inds[..., None].expand(B, num_kpts, 2))
 
+        # Convert to pixel coordinates [0, W-1] x [0, H-1]
+        kpts = _to_pixel_coords(kpts, H, W)
+
         # Compute subpixel refinement if requested
         if subpixel and raw_logits is not None:
             keypoint_offsets = _compute_subpixel_offsets(
                 raw_logits, inds, nms_radius, H, W, subpixel_temp
             )
-            kpts_subpixel = kpts + keypoint_offsets
-            kpts_subpixel = _to_pixel_coords(kpts_subpixel, H, W) - 0.5
+            kpts = kpts + keypoint_offsets  # Add pixel-space offsets
 
-        # Convert to pixel coordinates
-        kpts = _to_pixel_coords(kpts, H, W) - 0.5
-
-        # Convert to flat indices
-        idxs = kpts[..., 1] * W + kpts[..., 0]
-        idxs = idxs.long()
+        # Convert to flat indices (for integer-based gathering)
+        idxs = torch.round(kpts[..., 1]).long() * W + torch.round(kpts[..., 0]).long()
         idxs = torch.clamp(idxs, min=0, max=W * H - 1)
-
-        if subpixel and raw_logits is not None:
-            kpts = kpts_subpixel
 
         return idxs, kpts
 
@@ -339,25 +340,30 @@ class RaCo(Extractor):
 
         # Build output dictionary, excluding None values
         out_dict = {
-            # Points, add 0.5 to center the keypoints
+            # Points: add 0.5 to convert from [0, W-1] to pixel centers [0.5, W-0.5]
             "keypoints": keypoints + 0.5,  # (B, N, 2)
             "keypoint_scores": probs,  # (B, N)
         }
+
+        # Compute normalized grid coordinates once for grid_sample operations (if needed)
+        grid_coords = None
+        if self.conf.subpixel_sampling and (
+            (self.conf.ranker and ranker_map is not None) or 
+            (self.conf.covariance_estimator and cov_maps is not None)
+        ):
+            # Convert keypoints from [0, W-1] x [0, H-1] to normalized coords [-1, 1]
+            grid_coords = torch.stack(
+                [
+                    2.0 * keypoints[..., 0] / (W - 1) - 1.0,  # x
+                    2.0 * keypoints[..., 1] / (H - 1) - 1.0,  # y
+                ],
+                dim=-1,
+            ).unsqueeze(2)  # (B, N, 1, 2)
 
         # Add optional outputs only if they exist
         if self.conf.ranker and ranker_map is not None:
             # Higher the ranker score, better the keypoint
             if self.conf.subpixel_sampling:
-                grid_coords = torch.stack(
-                    [
-                        2.0 * keypoints[..., 0] / (W - 1) - 1.0,  # x
-                        2.0 * keypoints[..., 1] / (H - 1) - 1.0,  # y
-                    ],
-                    dim=-1,
-                ).unsqueeze(
-                    2
-                )  # (B, N, 1, 2)
-
                 ranker_scores = (
                     F.grid_sample(
                         ranker_map,
@@ -389,16 +395,6 @@ class RaCo(Extractor):
 
             # Sample the cholesky elements at the keypoints
             if self.conf.subpixel_sampling:
-                grid_coords = torch.stack(
-                    [
-                        2.0 * keypoints[..., 0] / (W - 1) - 1.0,  # x
-                        2.0 * keypoints[..., 1] / (H - 1) - 1.0,  # y
-                    ],
-                    dim=-1,
-                ).unsqueeze(
-                    2
-                )  # (B, N, 1, 2)
-
                 cholesky_scores = (
                     F.grid_sample(
                         processed_cov_maps,
