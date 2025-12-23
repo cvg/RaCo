@@ -173,7 +173,6 @@ def _compute_subpixel_offsets(
     B = raw_logits.shape[0]
     device = raw_logits.device
 
-    # Create pixel-space offsets directly
     offset_range = torch.linspace(
         -(nms_radius - 1) / 2, (nms_radius - 1) / 2, nms_radius, device=device
     )
@@ -215,7 +214,6 @@ def _sample_at_keypoints(
     B, C = feature_map.shape[:2]
 
     if use_subpixel:
-        # For subpixel keypoints, use bilinear interpolation
         grid_coords = torch.stack(
             [
                 2.0 * keypoints[..., 0] / (W - 1) - 1.0,  # x
@@ -246,7 +244,6 @@ def _sample_at_keypoints(
             2, idxs.unsqueeze(1).expand(B, C, -1)
         )  # (B, C, N)
 
-    # Convert from (B, C, N) to (B, N, C), then squeeze if single channel
     sampled = sampled.permute(0, 2, 1)  # (B, N, C)
     return sampled.squeeze(-1) if C == 1 else sampled  # (B, N) or (B, N, C)
 
@@ -277,7 +274,6 @@ class RaCo(Extractor):
 
         self.conf = SimpleNamespace(**{**self.default_conf, **conf})
 
-        # Validate configuration
         if self.conf.nms_radius % 2 == 0:
             raise ValueError(f"nms_radius must be odd, got {self.conf.nms_radius}")
         if self.conf.max_num_keypoints <= 0:
@@ -285,12 +281,10 @@ class RaCo(Extractor):
                 f"max_num_keypoints must be positive, got {self.conf.max_num_keypoints}"
             )
 
-        # Setup ImageNet normalization
         self.normalizer = transforms.Normalize(
             mean=self.conf.imagenet_mean, std=self.conf.imagenet_std
         )
 
-        # Initialize model
         self.model = RacoModel(
             {
                 "ranker": self.conf.ranker,
@@ -298,7 +292,6 @@ class RaCo(Extractor):
             }
         )
 
-        # Load pretrained weights if specified
         if self.conf.weights is not None:
             try:
                 state_dict = torch.load(self.conf.weights, map_location="cpu")["model"]
@@ -331,10 +324,8 @@ class RaCo(Extractor):
         B, C, H, W = keypoint_probs.size()
         device = keypoint_probs.device
 
-        # Generate coordinate grid in normalized space [-1, 1]
         grid = _get_grid(B, H, W, device=device).reshape(B, H * W, 2)
 
-        # Apply NMS
         if nms_radius % 2 != 1:
             raise ValueError("nms_radius should be odd")
         max_pooled = F.max_pool2d(
@@ -342,19 +333,16 @@ class RaCo(Extractor):
         )
         keypoint_probs = keypoint_probs * (keypoint_probs == max_pooled)
 
-        # Sample top keypoints
         inds = torch.topk(keypoint_probs.reshape(B, H * W), k=num_kpts).indices
         kpts = torch.gather(grid, dim=1, index=inds[..., None].expand(B, num_kpts, 2))
 
-        # Convert to pixel coordinates [0, W-1] x [0, H-1]
         kpts = _to_pixel_coords(kpts, H, W)
 
-        # Compute subpixel refinement if requested
         if subpixel and raw_logits is not None:
             keypoint_offsets = _compute_subpixel_offsets(
                 raw_logits, inds, nms_radius, H, W, subpixel_temp
             )
-            kpts = kpts + keypoint_offsets  # Add pixel-space offsets
+            kpts = kpts + keypoint_offsets
 
         return kpts
 
@@ -366,7 +354,6 @@ class RaCo(Extractor):
             image = image.repeat(1, 3, 1, 1)  # Convert to 3-channel greyscale
         image = self.normalizer(image)
 
-        # Forward through model
         raw_score_map, ranker_map, cholesky_maps = self.model(image)
 
         # Compute probability maps using batchwise global softmax normalization
@@ -375,7 +362,6 @@ class RaCo(Extractor):
         ).reshape(raw_score_map.size())
         keypoint_probs = torch.exp(log_keypoint_probs)
 
-        # Sample keypoints - returns pixel coordinates [0, W-1] x [0, H-1]
         keypoints = self._sampling(
             keypoint_probs=keypoint_probs,
             nms_radius=self.conf.nms_radius,
@@ -390,20 +376,16 @@ class RaCo(Extractor):
             keypoint_probs, keypoints, H, W, self.conf.subpixel_sampling
         )  # (B, N)
 
-        # Apply detection threshold if configured
         if self.conf.detection_threshold > 0:
             mask = probs > self.conf.detection_threshold
             keypoints = keypoints[mask].view(keypoints.shape[0], -1, 2)
             probs = probs[mask].view(probs.shape[0], -1)
 
-        # Build output dictionary
         out_dict = {
-            # Points: add 0.5 to convert from [0, W-1] to pixel centers [0.5, W-0.5]
             "keypoints": keypoints + 0.5,  # (B, N, 2)
             "keypoint_scores": probs,  # (B, N)
         }
 
-        # Add optional outputs only if they exist
         if self.conf.ranker and ranker_map is not None:
             # Higher the ranker score, better the keypoint
             ranker_scores = _sample_at_keypoints(
@@ -424,14 +406,10 @@ class RaCo(Extractor):
                 ],
                 dim=1,
             )
-
-            # Sample the cholesky elements at the keypoints
             cholesky_scores = _sample_at_keypoints(
                 processed_cholesky_maps, keypoints, H, W, self.conf.subpixel_sampling
             )  # (B, N, 3)
-
             covariances = _covariance_matrix_from_cholesky_elements(cholesky_scores)
-
             out_dict["covariances"] = covariances  # (B, N, 2, 2)
 
         return out_dict
