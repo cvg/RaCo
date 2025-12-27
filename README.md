@@ -1,10 +1,68 @@
-# RaCo: Ranking and Covariance for Practical Learned Keypoints
+<p align="center">
+  <h1 align="center">RaCo: Ranking and Covariance for Practical Learned Keypoints</h1>
+  <p align="center">
+    <a href="https://www.linkedin.com/in/abhiramshenoi/">Abhiram Shenoi</a>
+    ·
+    <a href="https://www.linkedin.com/in/philipplindenberger/">Philipp Lindenberger</a>
+    ·
+    <a href="https://psarlin.com/">Paul-Edouard&nbsp;Sarlin</a>
+    ·
+    <a href="https://www.microsoft.com/en-us/research/people/mapoll/">Marc&nbsp;Pollefeys</a>
+  </p>
+  <h2 align="center">
+    <p>3DV 2025</p>
+    <a href="https://openreview.net/forum?id=BWtdgrdcBH" align="center">Paper</a> | 
+    <a href="demo.ipynb" align="center">Demo</a>
+  </h2>
+</p>
 
-*README.md is WIP*
+## Abstract
 
-RaCo is a state-of-the-art computer vision library for keypoint detection and feature extraction. It provides robust keypoint detection with uncertainty estimation through covariance prediction.
+We introduce **RaCo**, a lightweight neural network designed to learn robust and versatile keypoints suitable for a variety of 3D computer vision tasks. The model integrates three key components: the repeatable keypoint detector, a differentiable ranker to maximize matches with a limited number of keypoints, and a covariance estimator to quantify spatial uncertainty in metric scale.
+
+Trained on perspective image crops only, RaCo operates without the need for covisible image pairs. It achieves strong rotational robustness through extensive data augmentation, even without the use of computationally expensive equivariant network architectures. The method is evaluated on several challenging datasets, where it demonstrates state-of-the-art performance in keypoint repeatability and two-view matching, particularly under large in-plane rotations.
+
+Ultimately, RaCo provides an effective and simple strategy to independently estimate keypoint ranking and metric covariance without additional labels, detecting interpretable and repeatable interest points.
+
+<p align="center">
+  <img src="assets/pipeline.png" alt="RaCo Pipeline" width="600">
+</p>
+
 
 ## Features
+
+See the paper for more details.
+
+<details>
+<summary>Keypoint Detector</summary>
+# TODO: Explain 1 line
+# TODO: Example
+</details>
+
+<details>
+<summary>Rotational Equivariance (click to expand)</summary>
+# TODO: Explain 1 line
+<p align="center">
+  <video src="assets/example_1.mp4" width="600" controls></video>
+</p>
+</details>
+
+
+<details>
+<summary>Keypoint Ranking (click to expand)</summary>
+# TODO: Explain 1 line
+<p align="center">
+  <img src="assets/ranking_example.png" alt="Keypoint Ranking" width="600">
+</p>
+</details>
+
+<details>
+<summary>Covariance Estimation (click to expand)</summary>
+# TODO: Explain 1 line
+<p align="center">
+  <img src="assets/covariance_example.png" alt="Covariance Estimation" width="600">
+</p>
+</details>
 
 ## Installation
 
@@ -53,7 +111,7 @@ Check out the [`demo.ipynb`](demo.ipynb) notebook for a complete walkthrough sho
 ## Advanced configuration
 
 <details>
-<summary>[Detail of all parameters - click to expand]</summary>
+<summary>Details of all parameters (click to expand)</summary>
 
 - `weights`: Path or URL to pretrained weights. Can be a local file path (e.g., `"raco/raco.pth"`) or a URL (e.g., `"https://github.com/cvg/RaCo/releases/download/v1.0.0/raco.pth"`). Set to `None` to skip loading pretrained weights. Default: `"raco/raco.pth"`.
 - `max_num_keypoints`: Maximum number of keypoints to extract per image. Default: 512.
