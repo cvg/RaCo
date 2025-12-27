@@ -2,7 +2,6 @@
 RaCo (Ranking and Covariance) Feature Extractor
 """
 
-import logging
 from types import SimpleNamespace
 from typing import Optional
 
@@ -14,30 +13,6 @@ import torchvision.transforms as transforms
 
 from .raco_model import RacoModel
 from .utils import Extractor
-
-logger = logging.getLogger(__name__)
-
-
-class TanhTimesN(nn.Module):
-    """
-    Custom activation function that applies N * tanh(x) to the input.
-    Ensures output is in the range [-N, N].
-
-    Args:
-        N: Scaling factor for the tanh output (must be positive)
-    """
-
-    def __init__(self, N: float = 1.0):
-        super().__init__()
-        if N <= 0:
-            raise ValueError(f"N must be positive, got {N}")
-        self.N = N
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.N * torch.tanh(x)
-
-    def extra_repr(self) -> str:
-        return f"N={self.N}"
 
 
 def _get_grid(
@@ -86,7 +61,7 @@ def _extract_patches_from_indices(
         raise ValueError(f"patch_size must be odd, got {patch_size}")
 
     B, H, W = x.shape
-    B, N = inds.shape
+    N = inds.shape[1]
     unfolder = nn.Unfold(kernel_size=patch_size, padding=patch_size // 2, stride=1)
     unfolded_x: torch.Tensor = unfolder(x[:, None])  # B x K_H * K_W x H * W
     patches = torch.gather(
@@ -251,7 +226,7 @@ def _sample_at_keypoints(
 class RaCo(Extractor):
     default_conf = {
         "name": "raco",
-        "weights": files("raco") / "raco_fixed_covs.pth",
+        "weights": files("raco") / "raco_release.pth",
         "trainable": False,
         "max_num_keypoints": 512,
         "nms_radius": 3,
@@ -292,13 +267,17 @@ class RaCo(Extractor):
             }
         )
 
+        # Initialize Softplus activation for covariance processing
+        if self.conf.covariance_estimator:
+            self.var_activation = nn.Softplus()
+
         if self.conf.weights is not None:
             try:
                 state_dict = torch.load(self.conf.weights, map_location="cpu")["model"]
                 self.load_state_dict(state_dict, strict=True)
-                logger.info(f"[RaCo] Loaded weights from {self.conf.weights}")
+                print(f"[RaCo] Loaded weights from {self.conf.weights}")
             except Exception as e:
-                logger.error(f"Failed to load weights from {self.conf.weights}: {e}")
+                print(f"Failed to load weights from {self.conf.weights}: {e}")
                 raise
 
     def _sampling(
@@ -326,8 +305,7 @@ class RaCo(Extractor):
 
         grid = _get_grid(B, H, W, device=device).reshape(B, H * W, 2)
 
-        if nms_radius % 2 != 1:
-            raise ValueError("nms_radius should be odd")
+        # Apply NMS
         max_pooled = F.max_pool2d(
             keypoint_probs, nms_radius, stride=1, padding=nms_radius // 2
         )
@@ -357,10 +335,9 @@ class RaCo(Extractor):
         raw_score_map, ranker_map, cholesky_maps = self.model(image)
 
         # Compute probability maps using batchwise global softmax normalization
-        log_keypoint_probs = nn.functional.log_softmax(
-            raw_score_map.flatten(1), dim=1
-        ).reshape(raw_score_map.size())
-        keypoint_probs = torch.exp(log_keypoint_probs)
+        keypoint_probs = F.softmax(raw_score_map.flatten(1), dim=1).reshape(
+            raw_score_map.size()
+        )
 
         keypoints = self._sampling(
             keypoint_probs=keypoint_probs,
@@ -382,7 +359,7 @@ class RaCo(Extractor):
             probs = probs[mask].view(probs.shape[0], -1)
 
         out_dict = {
-            "keypoints": keypoints + 0.5,  # (B, N, 2)
+            "keypoints": keypoints + 0.5,  # (B, N, 2) in pixel coordinates
             "keypoint_scores": probs,  # (B, N)
         }
 
@@ -396,13 +373,11 @@ class RaCo(Extractor):
         if self.conf.covariance_estimator and cholesky_maps is not None:
             # Apply activations to ensure L11 and L22 are positive
             # cholesky_maps has shape (B, 3, H, W) with [L11_prime, L21, L22_prime]
-            var_activation = nn.Softplus()
-
             processed_cholesky_maps = torch.stack(
                 [
-                    var_activation(cholesky_maps[:, 0, ...]),  # L11
-                    cholesky_maps[:, 1, ...],  # L21 (no constraint)
-                    var_activation(cholesky_maps[:, 2, ...]),  # L22
+                    self.var_activation(cholesky_maps[:, 0]),  # L11
+                    cholesky_maps[:, 1],  # L21 (no constraint)
+                    self.var_activation(cholesky_maps[:, 2]),  # L22
                 ],
                 dim=1,
             )
@@ -413,8 +388,3 @@ class RaCo(Extractor):
             out_dict["covariances"] = covariances  # (B, N, 2, 2)
 
         return out_dict
-
-
-if __name__ == "__main__":
-    model = RaCo({})
-    print(model)
