@@ -123,15 +123,6 @@ Check out the [`demo.ipynb`](demo.ipynb) notebook for a complete walkthrough sho
 
 </details>
 
-## Requirements
-
-- Python >= 3.8
-- PyTorch >= 1.9.1
-- OpenCV
-- NumPy
-- Matplotlib
-- Kornia >= 0.6.11
-
 ## Citation
 
 If you use RaCo in your research, please cite:
