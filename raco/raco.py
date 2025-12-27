@@ -228,7 +228,6 @@ class RaCo(Extractor):
         "name": "raco",
         # "weights": "https://github.com/cvg/RaCo/releases/download/v1.0.0/raco.pth",
         "weights": "raco/raco.pth",
-        "trainable": False,
         "max_num_keypoints": 512,
         "nms_radius": 3,
         "subpixel_sampling": True,
@@ -236,8 +235,6 @@ class RaCo(Extractor):
         "detection_threshold": -1,
         "ranker": True,
         "covariance_estimator": True,
-        "imagenet_mean": [0.485, 0.456, 0.406],
-        "imagenet_std": [0.229, 0.224, 0.225],
     }
 
     preprocess_conf = {
@@ -258,8 +255,8 @@ class RaCo(Extractor):
             )
 
         self.normalizer = transforms.Normalize(
-            mean=self.conf.imagenet_mean, std=self.conf.imagenet_std
-        )
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        )   # ImageNet normalization
 
         self.model = RacoModel(
             {
