@@ -40,13 +40,12 @@ See the paper for more details.
 </details>
 
 <details>
-<summary>Rotational Equivariance (click to expand)</summary>
-# TODO: Explain 1 line
-<p align="center">
-  <video src="assets/example_1.mp4" width="600" controls></video>
-</p>
+  <summary>Rotational Equivariance (click to expand)</summary>
+  # TODO: Explain 1 line
+  <div align="center">
+    <video src="https://github.com/user-attachments/assets/a41394b5-b2d3-4341-a036-afc0fa2eb6e0">
+  </div>
 </details>
-
 
 <details>
 <summary>Keypoint Ranking (click to expand)</summary>
