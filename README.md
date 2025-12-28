@@ -31,25 +31,33 @@ Ultimately, RaCo provides an effective and simple strategy to independently esti
 
 ## Features
 
-See the paper for more details.
+RaCo is a rotationally equivariant keypoint detector that identifies stable and repeatable keypoints in images. Refer the paper for a quantiative evaluation of its rotational equivariance.
+
+
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/a41394b5-b2d3-4341-a036-afc0fa2eb6e0">
+</div>
 
 <details>
-<summary>Keypoint Detector</summary>
-# TODO: Explain 1 line
-# TODO: Example
-</details>
+<summary>RaCo's Outputs (click to expand)</summary>
+RaCo outputs the following for each input image:
 
-<details>
-  <summary>Rotational Equivariance (click to expand)</summary>
-  # TODO: Explain 1 line
-  <div align="center">
-    <video src="https://github.com/user-attachments/assets/a41394b5-b2d3-4341-a036-afc0fa2eb6e0">
-  </div>
+- **Keypoints**: 2D coordinates of detected keypoints in pixel space.
+- **Keypoint Scores**: Detection confidence scores for each keypoint.
+- **Ranker Scores**: Ranking scores for each keypoint indicating their reliability for matching. To subsample keypoints based on ranking, select the top-k keypoints with the highest ranker scores.
+- **Covariances**: 2x2 covariance matrices representing the uncertainty of each keypoint's location.
+
+<p align="center">
+  <img src="assets/raco_outputs.png" alt="Covariance Estimation" width="600">
+</p>
 </details>
 
 <details>
 <summary>Keypoint Ranking (click to expand)</summary>
-# TODO: Explain 1 line
+The ranking module is trained to produce a ranking score for each keypoint, which is consistent across different viewpoints and image transformations. The ranking score is more reliable than the detection score for selecting keypoints for matching as it is trained to maintain a consistent order of keypoints across images.
+
+Here the repeatability of keypoints selected based on ranking scores is shown to be higher than those selected based on detection scores. Refer the paper for a quantiative evaluation of the ranking module.
+
 <p align="center">
   <img src="assets/ranking_example.png" alt="Keypoint Ranking" width="600">
 </p>
@@ -57,7 +65,8 @@ See the paper for more details.
 
 <details>
 <summary>Covariance Estimation (click to expand)</summary>
-# TODO: Explain 1 line
+The covariance estimator predicts the uncertainty of keypoint locations in 2D pixel space. This is useful for applications that require a measure of confidence in keypoint detections.
+
 <p align="center">
   <img src="assets/covariance_example.png" alt="Covariance Estimation" width="600">
 </p>
