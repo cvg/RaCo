@@ -78,7 +78,7 @@ def read_image(path: Path, grayscale: bool = False) -> np.ndarray:
     mode = cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR
     image = cv2.imread(str(path), mode)
     if image is None:
-        raise IOError(f"Could not read image at {path}.")
+        raise OSError(f"Could not read image at {path}.")
     if not grayscale:
         image = image[..., ::-1]
     return image

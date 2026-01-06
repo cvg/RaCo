@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from typing import Optional
 
 import torch
-from importlib.resources import files
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
@@ -178,7 +177,8 @@ def _sample_at_keypoints(
 
     Args:
         feature_map: Feature map of shape (B, C, H, W)
-        keypoints: Keypoint locations in pixel coordinates [0, W-1] x [0, H-1], shape (B, N, 2)
+        keypoints: Keypoint locations in pixel coordinates 
+                   [0, W-1] x [0, H-1], shape (B, N, 2)
         H: Feature map height
         W: Feature map width
         use_subpixel: If True, use bilinear interpolation; if False, use direct indexing

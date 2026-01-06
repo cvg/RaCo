@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class InputPadder(object):
+class InputPadder:
     """Pads images such that dimensions are divisible by 8"""
 
     def __init__(self, h: int, w: int, divis_by: int = 8):
@@ -71,7 +71,7 @@ class ResBlock(nn.Module):
         inplanes: int,
         planes: int,
     ) -> None:
-        super(ResBlock, self).__init__()
+        super().__init__()
         self.conv1 = nn.Conv2d(
             inplanes,
             planes,

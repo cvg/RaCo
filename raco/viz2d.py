@@ -9,9 +9,9 @@ From glue-factory https://github.com/cvg/glue-factory/blob/main/gluefactory/visu
 
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
-from matplotlib.collections import EllipseCollection
 import numpy as np
 import torch
+from matplotlib.collections import EllipseCollection
 
 
 def cm_RdGn(x):
@@ -30,10 +30,14 @@ def cm_GnRd(x):
 def cm_BlRdGn(x_):
     """Custom colormap: blue (-1) -> red (0.0) -> green (1)."""
     x = np.clip(x_, 0, 1)[..., None] * 2
-    c = x * np.array([[0, 1.0, 0, 1.0]]) + (2 - x) * np.array([[1.0, 0, 0, 1.0]])
+    c = x * np.array([[0, 1.0, 0, 1.0]]) + (2 - x) * np.array(
+        [[1.0, 0, 0, 1.0]]
+    )
 
     xn = -np.clip(x_, -1, 0)[..., None] * 2
-    cn = xn * np.array([[0, 0.1, 1, 1.0]]) + (2 - xn) * np.array([[1.0, 0, 0, 1.0]])
+    cn = xn * np.array([[0, 0.1, 1, 1.0]]) + (2 - xn) * np.array(
+        [[1.0, 0, 0, 1.0]]
+    )
     out = np.clip(np.where(x_[..., None] < 0, cn, c), 0, 1)
     return out
 
@@ -57,11 +61,18 @@ def cm_grad2d(xy):
     xy = np.clip(xy, 0, 1)
     x = xy[..., :1]
     y = xy[..., -1:]
-    rgb = (1 - x) * (1 - y) * ll + x * (1 - y) * lr + x * y * tr + (1 - x) * y * tl
+    rgb = (
+        (1 - x) * (1 - y) * ll
+        + x * (1 - y) * lr
+        + x * y * tr
+        + (1 - x) * y * tl
+    )
     return rgb.clip(0, 1)
 
 
-def plot_images(imgs, titles=None, cmaps="gray", dpi=100, pad=0.5, adaptive=True):
+def plot_images(
+    imgs, titles=None, cmaps="gray", dpi=100, pad=0.5, adaptive=True
+):
     """Plot a set of images horizontally.
     Args:
         imgs: list of NumPy RGB (H, W, 3) or PyTorch RGB (3, H, W) or mono (H, W).
@@ -83,10 +94,7 @@ def plot_images(imgs, titles=None, cmaps="gray", dpi=100, pad=0.5, adaptive=True
     if not isinstance(cmaps, (list, tuple)):
         cmaps = [cmaps] * n
 
-    if adaptive:
-        ratios = [i.shape[1] / i.shape[0] for i in imgs]  # W / H
-    else:
-        ratios = [4 / 3] * n
+    ratios = [i.shape[1] / i.shape[0] for i in imgs] if adaptive else [4 / 3] * n 
     figsize = [sum(ratios) * 4.5, 4.5]
     fig, ax = plt.subplots(
         1, n, figsize=figsize, dpi=dpi, gridspec_kw={"width_ratios": ratios}
@@ -128,10 +136,11 @@ def plot_keypoints(kpts, colors="lime", ps=4, axes=None, a=1.0):
 def plot_covariance_ellipses(
     kpts, covariances, colors=None, sigma=3, lw=2, alpha=0.6, axes=None
 ):
-    """Plot covariance ellipses for keypoints (super fast using EllipseCollection).
+    """Plot covariance ellipses for keypoints.
     Args:
         kpts: list of ndarrays of size (N, 2) or single ndarray of keypoint coordinates.
-        covariances: list of ndarrays of size (N, 2, 2) or single ndarray of covariance matrices.
+        covariances: list of ndarrays of size (N, 2, 2) or 
+                     single ndarray of covariance matrices.
         colors: string, list of colors, or colormap. If None, uses tab10 colormap.
         sigma: number of standard deviations for the ellipse size (default: 3).
         lw: line width of the ellipse edges.
@@ -170,7 +179,7 @@ def plot_covariance_ellipses(
         angles = np.zeros(n_points)
 
         # Vectorized eigenvalue decomposition and ellipse parameter calculation
-        for i, (mean, cov) in enumerate(zip(keypoints, covs)):
+        for i, cov in enumerate(covs):
             # Eigenvalue decomposition
             vals, vecs = np.linalg.eigh(cov)
 
@@ -231,7 +240,13 @@ def add_text(
 ):
     ax = plt.gcf().axes[idx]
     t = ax.text(
-        *pos, text, fontsize=fs, ha=ha, va=va, color=color, transform=ax.transAxes
+        *pos,
+        text,
+        fontsize=fs,
+        ha=ha,
+        va=va,
+        color=color,
+        transform=ax.transAxes,
     )
     if lcolor is not None:
         t.set_path_effects(
