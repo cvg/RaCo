@@ -10,7 +10,7 @@
     <a href="https://www.microsoft.com/en-us/research/people/mapoll/">Marc&nbsp;Pollefeys</a>
   </p>
   <h2 align="center">
-    <p>3DV 2025</p>
+    <p>3DV 2026</p>
     <a href="https://arxiv.org/pdf/x" align="center">Paper</a> | 
     <a href="demo.ipynb" align="center">Demo</a>
   </h2>
