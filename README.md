@@ -142,7 +142,6 @@ If you use RaCo in your research, please cite:
   author={Shenoi, Abhiram and Lindenberger, Philipp and Sarlin, Paul-Edouard and Pollefeys, Marc},
   booktitle={International Conference on 3D Vision},
   year={2025},
-  url={https://openreview.net/forum?id=BWtdgrdcBH}
 }
 ```
 
