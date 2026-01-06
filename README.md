@@ -140,7 +140,7 @@ If you use RaCo in your research, please cite:
 @inproceedings{shenoi2025raco,
   title={{RaCo}: Ranking and Covariance for Practical Learned Keypoints},
   author={Shenoi, Abhiram and Lindenberger, Philipp and Sarlin, Paul-Edouard and Pollefeys, Marc},
-  booktitle={Thirteenth International Conference on 3D Vision},
+  booktitle={International Conference on 3D Vision},
   year={2025},
   url={https://openreview.net/forum?id=BWtdgrdcBH}
 }
