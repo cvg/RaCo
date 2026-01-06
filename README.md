@@ -11,7 +11,7 @@
   </p>
   <h2 align="center">
     <p>3DV 2025</p>
-    <a href="https://openreview.net/forum?id=BWtdgrdcBH" align="center">Paper</a> | 
+    <a href="https://arxiv.org/pdf/x" align="center">Paper</a> | 
     <a href="demo.ipynb" align="center">Demo</a>
   </h2>
 </p>
