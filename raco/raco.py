@@ -177,7 +177,7 @@ def _sample_at_keypoints(
 
     Args:
         feature_map: Feature map of shape (B, C, H, W)
-        keypoints: Keypoint locations in pixel coordinates 
+        keypoints: Keypoint locations in pixel coordinates
                    [0, W-1] x [0, H-1], shape (B, N, 2)
         H: Feature map height
         W: Feature map width
@@ -195,9 +195,7 @@ def _sample_at_keypoints(
                 2.0 * keypoints[..., 1] / (H - 1) - 1.0,  # y
             ],
             dim=-1,
-        ).unsqueeze(
-            2
-        )  # (B, N, 1, 2)
+        ).unsqueeze(2)  # (B, N, 1, 2)
 
         sampled = F.grid_sample(
             feature_map,
@@ -205,9 +203,7 @@ def _sample_at_keypoints(
             mode="bilinear",
             padding_mode="border",
             align_corners=True,
-        ).squeeze(
-            -1
-        )  # (B, C, N)
+        ).squeeze(-1)  # (B, C, N)
     else:
         # For integer keypoints, use direct indexing
         idxs = (
@@ -256,7 +252,7 @@ class RaCo(Extractor):
 
         self.normalizer = transforms.Normalize(
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-        )   # ImageNet normalization
+        )  # ImageNet normalization
 
         self.model = RacoModel(
             {

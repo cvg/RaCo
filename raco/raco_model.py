@@ -63,11 +63,6 @@ class ConvBlock(nn.Module):
         return x
 
 
-
-
-
-
-
 class ResBlock(nn.Module):
     expansion: int = 1
 
@@ -171,15 +166,9 @@ class RacoModel(nn.Module):  # Raco multiscale architecture with standard convol
         self.conv2 = conv3x3(c2, dim // 4)
         self.conv3 = conv3x3(c3, dim // 4)
         self.conv4 = conv3x3(c4, dim // 4)
-        self.upsample2 = nn.Upsample(
-            scale_factor=2, mode="bilinear", align_corners=True
-        )
-        self.upsample4 = nn.Upsample(
-            scale_factor=4, mode="bilinear", align_corners=True
-        )
-        self.upsample8 = nn.Upsample(
-            scale_factor=8, mode="bilinear", align_corners=True
-        )
+        self.upsample2 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.upsample4 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        self.upsample8 = nn.Upsample(scale_factor=8, mode="bilinear", align_corners=True)
         self.upsample32 = nn.Upsample(
             scale_factor=32, mode="bilinear", align_corners=True
         )
@@ -197,9 +186,7 @@ class RacoModel(nn.Module):  # Raco multiscale architecture with standard convol
         ranker_layers = [ResBlock(3, 12)]
         ranker_layers += [ResBlock(12, 12) for _ in range(8)]
         ranker_layers += [
-            nn.Conv2d(
-                12, 1, kernel_size=5, padding=2, bias=True, padding_mode="reflect"
-            )
+            nn.Conv2d(12, 1, kernel_size=5, padding=2, bias=True, padding_mode="reflect")
         ]
         self.ranker_head = nn.Sequential(*ranker_layers)
 

@@ -12,7 +12,7 @@ from . import viz2d  # noqa
 # Define what gets imported with "from raco import *"
 __all__ = [
     "RaCo",
-    "RacoModel", 
+    "RacoModel",
     "utils",
     "viz2d",
     "__version__",
