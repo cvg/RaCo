@@ -1,0 +1,15 @@
+line-length = 90
+
+[lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # Pyflakes
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "I",   # isort
+]
+ignore = ["SIM117"]
+
+[lint.per-file-ignores]
+"scripts/python/*.py" = ["E", "SIM", "UP", "B"]

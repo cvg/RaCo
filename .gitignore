@@ -53,10 +53,8 @@ ENV/
 .spyderproject
 .spyproject
 
-# Type checkers
-.mypy_cache/
-.pytype/
-.pyre/
+# Linter
+.ruff_cache/
 
 # OS
 .DS_Store
