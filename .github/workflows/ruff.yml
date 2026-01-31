@@ -1,0 +1,23 @@
+name: Ruff Fixer
+on: [push]
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      
+      - uses: astral-sh/ruff-action@v1
+        with:
+          args: "format" 
+
+      - uses: astral-sh/ruff-action@v1
+        with:
+          args: "check --select I --fix"
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "linter: fix linting and formatting with Ruff"
