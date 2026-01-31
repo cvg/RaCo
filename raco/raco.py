@@ -222,8 +222,7 @@ def _sample_at_keypoints(
 class RaCo(Extractor):
     default_conf = {
         "name": "raco",
-        # "weights": "https://github.com/cvg/RaCo/releases/download/v1.0.0/raco.pth",
-        "weights": "raco/raco.pth",
+        "weights": "https://github.com/cvg/RaCo/releases/download/v1.0.0/raco.pth",
         "max_num_keypoints": 512,
         "nms_radius": 3,
         "subpixel_sampling": True,
@@ -266,26 +265,23 @@ class RaCo(Extractor):
             self.var_activation = nn.Softplus()
 
         if self.conf.weights is not None:
-            try:
-                # Check if weights is a URL or local path
-                if isinstance(self.conf.weights, str) and self.conf.weights.startswith(
-                    ("http://", "https://")
-                ):
-                    state_dict = torch.hub.load_state_dict_from_url(
-                        self.conf.weights,
-                        map_location="cpu",
-                        progress=True,
-                        weights_only=True,
-                    )
-                else:
-                    state_dict = torch.load(
-                        self.conf.weights, map_location="cpu", weights_only=True
-                    )
-                self.load_state_dict(state_dict, strict=True)
-                print(f"[RaCo] Loaded weights from {self.conf.weights}")
-            except Exception as e:
-                print(f"Failed to load weights from {self.conf.weights}: {e}")
-                raise
+            # Load pretrained weights from URL or local path
+            if isinstance(self.conf.weights, str) and self.conf.weights.startswith(
+                ("http://", "https://")
+            ):
+                state_dict = torch.hub.load_state_dict_from_url(
+                    self.conf.weights,
+                    map_location="cpu",
+                    progress=True,
+                    weights_only=True,
+                )
+            else:
+                state_dict = torch.load(
+                    self.conf.weights, map_location="cpu", weights_only=True
+                )
+            
+            self.load_state_dict(state_dict, strict=True)
+            print(f"[RaCo] Loaded weights from {self.conf.weights}") 
 
     def _sampling(
         self,
