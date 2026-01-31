@@ -279,9 +279,9 @@ class RaCo(Extractor):
                 state_dict = torch.load(
                     self.conf.weights, map_location="cpu", weights_only=True
                 )
-            
+
             self.load_state_dict(state_dict, strict=True)
-            print(f"[RaCo] Loaded weights from {self.conf.weights}") 
+            print(f"[RaCo] Loaded weights from {self.conf.weights}")
 
     def _sampling(
         self,
