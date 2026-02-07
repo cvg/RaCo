@@ -10,8 +10,135 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 
-from .raco_model import RacoModel
 from .utils import ImagePreprocessor
+
+
+class InputPadder:
+    """Pads images such that dimensions are divisible by 8"""
+
+    def __init__(self, h: int, w: int, divis_by: int = 8):
+        self.ht = h
+        self.wd = w
+        pad_ht = (((self.ht // divis_by) + 1) * divis_by - self.ht) % divis_by
+        pad_wd = (((self.wd // divis_by) + 1) * divis_by - self.wd) % divis_by
+        self._pad = [
+            pad_wd // 2,
+            pad_wd - pad_wd // 2,
+            pad_ht // 2,
+            pad_ht - pad_ht // 2,
+        ]
+
+    def pad(self, x: torch.Tensor):
+        assert x.ndim == 4
+        return F.pad(x, self._pad, mode="replicate")
+
+    def unpad(self, x: torch.Tensor):
+        assert x.ndim == 4
+        ht = x.shape[-2]
+        wd = x.shape[-1]
+        c = [self._pad[2], ht - self._pad[3], self._pad[0], wd - self._pad[1]]
+        return x[..., c[0] : c[1], c[2] : c[3]]
+
+
+class ConvBlock(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+    ):
+        super().__init__()
+        self.gate = nn.SELU(inplace=True)
+        self.conv1 = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            bias=False,
+        )
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(
+            out_channels,
+            out_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            bias=False,
+        )
+        self.bn2 = nn.BatchNorm2d(out_channels)
+
+    def forward(self, x):
+        x = self.gate(self.bn1(self.conv1(x)))  # B x in_channels x H x W
+        x = self.gate(self.bn2(self.conv2(x)))  # B x out_channels x H x W
+        return x
+
+
+class ResBlock(nn.Module):
+    expansion: int = 1
+
+    def __init__(
+        self,
+        inplanes: int,
+        planes: int,
+    ) -> None:
+        super().__init__()
+        self.conv1 = nn.Conv2d(
+            inplanes,
+            planes,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            bias=False,
+        )
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(
+            planes,
+            planes,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            bias=False,
+        )
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.gate = nn.SELU(inplace=True)
+        self.match_dims = nn.Conv2d(
+            inplanes,
+            planes,
+            kernel_size=1,
+            stride=1,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.gate(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        identity = self.match_dims(identity)
+
+        out += identity
+        out = self.gate(out)
+
+        return out
+
+
+def conv1x1(in_planes, out_planes, stride=1, bias=False):
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=bias)
+
+
+def conv3x3(in_planes, out_planes, stride=1, kernel_size=3):
+    return nn.Conv2d(
+        in_planes,
+        out_planes,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=kernel_size // 2,
+        bias=False,
+    )
 
 
 def _get_grid(
@@ -253,15 +380,93 @@ class RaCo(nn.Module):
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
         )  # ImageNet normalization
 
-        self.model = RacoModel(
-            {
-                "ranker": self.conf.ranker,
-                "covariance_estimator": self.conf.covariance_estimator,
-            }
+        # Model architecture based on ALIKED-n16 https://github.com/Shiaoming/ALIKED)
+        self.model = nn.Module()
+
+        self.model.pool2 = nn.AvgPool2d(kernel_size=2, stride=2)
+        self.model.pool4 = nn.AvgPool2d(kernel_size=4, stride=4)
+        self.model.gate = nn.SELU(inplace=True)
+
+        c1, c2, c3, c4 = 16, 32, 64, 128
+        self.model.block1 = ConvBlock(3, c1)
+        self.model.block2 = ResBlock(c1, c2)
+        self.model.block3 = ResBlock(c2, c3)
+        self.model.block4 = ResBlock(c3, c4)
+        dim = c4
+
+        self.model.conv1 = conv1x1(c1, dim // 4)
+        self.model.conv2 = conv3x3(c2, dim // 4)
+        self.model.conv3 = conv3x3(c3, dim // 4)
+        self.model.conv4 = conv3x3(c4, dim // 4)
+        self.model.upsample2 = nn.Upsample(
+            scale_factor=2, mode="bilinear", align_corners=True
+        )
+        self.model.upsample4 = nn.Upsample(
+            scale_factor=4, mode="bilinear", align_corners=True
+        )
+        self.model.upsample8 = nn.Upsample(
+            scale_factor=8, mode="bilinear", align_corners=True
+        )
+        self.model.upsample32 = nn.Upsample(
+            scale_factor=32, mode="bilinear", align_corners=True
         )
 
-        # Initialize Softplus activation for covariance processing
+        self.model.score_head = nn.Sequential(
+            conv1x1(dim, 8),
+            nn.SELU(inplace=True),
+            conv3x3(8, 4),
+            nn.SELU(inplace=True),
+            conv3x3(4, 4),
+            nn.SELU(inplace=True),
+            conv3x3(4, 1),
+        )
+
+        # Ranker head
+        if self.conf.ranker:
+            ranker_dim = 12
+            ranker_layers = [ResBlock(3, ranker_dim)]
+            ranker_layers += [ResBlock(ranker_dim, ranker_dim) for _ in range(8)]
+            ranker_layers += [
+                nn.Conv2d(
+                    ranker_dim,
+                    1,
+                    kernel_size=5,
+                    padding=2,
+                    bias=True,
+                    padding_mode="reflect",
+                )
+            ]
+            self.model.ranker_head = nn.Sequential(*ranker_layers)
+
+        # Covariance estimator head
         if self.conf.covariance_estimator:
+            modules = []
+            in_channels = dim
+            for out_channels in [64, 32, 32]:
+                modules.append(
+                    nn.Conv2d(
+                        in_channels,
+                        out_channels,
+                        kernel_size=3,
+                        stride=1,
+                        padding=1,
+                        bias=False,
+                        padding_mode="reflect",
+                    )
+                )
+                modules.append(nn.LeakyReLU(inplace=True))
+                in_channels = out_channels
+            # Output 3 channels for Cholesky elements [L11, L21, L22]
+            modules.append(
+                nn.Conv2d(
+                    in_channels=32,
+                    out_channels=3,
+                    kernel_size=1,
+                    bias=True,
+                    padding_mode="reflect",
+                )
+            )
+            self.model.covariance_estimator_head = nn.Sequential(*modules)
             self.var_activation = nn.Softplus()
 
         if self.conf.weights is not None:
@@ -335,7 +540,53 @@ class RaCo(nn.Module):
             image = image.repeat(1, 3, 1, 1)  # Convert to 3-channel greyscale
         image = self.normalizer(image)
 
-        raw_score_map, ranker_map, cholesky_maps = self.model(image)
+        div_by = 2**5
+        padder = InputPadder(image.shape[-2], image.shape[-1], div_by)
+        x = padder.pad(image)
+
+        # Feature extraction
+        x1 = self.model.block1(x)  # B x c1 x H x W
+        x2 = self.model.pool2(x1)
+        x2 = self.model.block2(x2)  # B x c2 x H/2 x W/2
+        x3 = self.model.pool4(x2)
+        x3 = self.model.block3(x3)  # B x c3 x H/8 x W/8
+        x4 = self.model.pool4(x3)
+        x4 = self.model.block4(x4)  # B x dim x H/32 x W/32
+
+        # Feature aggregation
+        x1 = self.model.gate(self.model.conv1(x1))  # B x dim//4 x H x W
+        x2 = self.model.gate(self.model.conv2(x2))  # B x dim//4 x H//2 x W//2
+        x3 = self.model.gate(self.model.conv3(x3))  # B x dim//4 x H//8 x W//8
+        x4 = self.model.gate(self.model.conv4(x4))  # B x dim//4 x H//32 x W//32
+        x2_up = self.model.upsample2(x2)  # B x dim//4 x H x W
+        x3_up = self.model.upsample8(x3)  # B x dim//4 x H x W
+        x4_up = self.model.upsample32(x4)  # B x dim//4 x H x W
+        x1234 = torch.cat([x1, x2_up, x3_up, x4_up], dim=1)
+
+        # Score head
+        raw_score_map = self.model.score_head(x1234)
+        raw_score_map = padder.unpad(raw_score_map)
+
+        # Ranker head
+        ranker_map = None
+        if self.conf.ranker:
+            ranker_map = self.model.ranker_head(x)
+            ranker_map = padder.unpad(ranker_map)
+
+        # Covariance estimator head
+        cholesky_maps = None
+        if self.conf.covariance_estimator:
+            cholesky_maps = self.model.covariance_estimator_head(x1234)
+            cholesky_maps = padder.unpad(cholesky_maps)
+            # Apply softplus only to diagonal elements (L11 and L22), not L21
+            cholesky_maps = torch.stack(
+                [
+                    self.var_activation(cholesky_maps[:, 0]),  # L11
+                    cholesky_maps[:, 1],  # L21 (no constraint)
+                    self.var_activation(cholesky_maps[:, 2]),  # L22
+                ],
+                dim=1,
+            )
 
         # Compute probability maps using batchwise global softmax normalization
         keypoint_probs = F.softmax(raw_score_map.flatten(1), dim=1).reshape(
@@ -374,18 +625,9 @@ class RaCo(nn.Module):
             out_dict["ranker_scores"] = ranker_scores
 
         if self.conf.covariance_estimator and cholesky_maps is not None:
-            # Apply activations to ensure L11 and L22 are positive
-            # cholesky_maps has shape (B, 3, H, W) with [L11_prime, L21, L22_prime]
-            processed_cholesky_maps = torch.stack(
-                [
-                    self.var_activation(cholesky_maps[:, 0]),  # L11
-                    cholesky_maps[:, 1],  # L21 (no constraint)
-                    self.var_activation(cholesky_maps[:, 2]),  # L22
-                ],
-                dim=1,
-            )
+            # Cholesky maps already have softplus applied to L11 and L22
             cholesky_scores = _sample_at_keypoints(
-                processed_cholesky_maps, keypoints, H, W, self.conf.subpixel_sampling
+                cholesky_maps, keypoints, H, W, self.conf.subpixel_sampling
             )  # (B, N, 3)
             covariances = _covariance_matrix_from_cholesky_elements(cholesky_scores)
             out_dict["covariances"] = covariances  # (B, N, 2, 2)
@@ -395,11 +637,11 @@ class RaCo(nn.Module):
     @torch.no_grad()
     def extract(self, img: torch.Tensor, **conf) -> dict:
         """Perform extraction with online resizing.
-        
+
         Args:
             img: Input image tensor of shape (C, H, W) or (B, C, H, W)
             **conf: Additional preprocessing configuration (e.g., resize settings)
-            
+
         Returns:
             Dictionary containing extracted features with scaled coordinates
         """
