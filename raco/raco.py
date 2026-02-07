@@ -381,37 +381,29 @@ class RaCo(nn.Module):
         )  # ImageNet normalization
 
         # Model architecture based on ALIKED-n16 https://github.com/Shiaoming/ALIKED)
-        self.model = nn.Module()
-
-        self.model.pool2 = nn.AvgPool2d(kernel_size=2, stride=2)
-        self.model.pool4 = nn.AvgPool2d(kernel_size=4, stride=4)
-        self.model.gate = nn.SELU(inplace=True)
+        self.pool2 = nn.AvgPool2d(kernel_size=2, stride=2)
+        self.pool4 = nn.AvgPool2d(kernel_size=4, stride=4)
+        self.gate = nn.SELU(inplace=True)
 
         c1, c2, c3, c4 = 16, 32, 64, 128
-        self.model.block1 = ConvBlock(3, c1)
-        self.model.block2 = ResBlock(c1, c2)
-        self.model.block3 = ResBlock(c2, c3)
-        self.model.block4 = ResBlock(c3, c4)
+        self.block1 = ConvBlock(3, c1)
+        self.block2 = ResBlock(c1, c2)
+        self.block3 = ResBlock(c2, c3)
+        self.block4 = ResBlock(c3, c4)
         dim = c4
 
-        self.model.conv1 = conv1x1(c1, dim // 4)
-        self.model.conv2 = conv3x3(c2, dim // 4)
-        self.model.conv3 = conv3x3(c3, dim // 4)
-        self.model.conv4 = conv3x3(c4, dim // 4)
-        self.model.upsample2 = nn.Upsample(
-            scale_factor=2, mode="bilinear", align_corners=True
-        )
-        self.model.upsample4 = nn.Upsample(
-            scale_factor=4, mode="bilinear", align_corners=True
-        )
-        self.model.upsample8 = nn.Upsample(
-            scale_factor=8, mode="bilinear", align_corners=True
-        )
-        self.model.upsample32 = nn.Upsample(
+        self.conv1 = conv1x1(c1, dim // 4)
+        self.conv2 = conv3x3(c2, dim // 4)
+        self.conv3 = conv3x3(c3, dim // 4)
+        self.conv4 = conv3x3(c4, dim // 4)
+        self.upsample2 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.upsample4 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        self.upsample8 = nn.Upsample(scale_factor=8, mode="bilinear", align_corners=True)
+        self.upsample32 = nn.Upsample(
             scale_factor=32, mode="bilinear", align_corners=True
         )
 
-        self.model.score_head = nn.Sequential(
+        self.score_head = nn.Sequential(
             conv1x1(dim, 8),
             nn.SELU(inplace=True),
             conv3x3(8, 4),
@@ -436,7 +428,7 @@ class RaCo(nn.Module):
                     padding_mode="reflect",
                 )
             ]
-            self.model.ranker_head = nn.Sequential(*ranker_layers)
+            self.ranker_head = nn.Sequential(*ranker_layers)
 
         # Covariance estimator head
         if self.conf.covariance_estimator:
@@ -466,7 +458,7 @@ class RaCo(nn.Module):
                     padding_mode="reflect",
                 )
             )
-            self.model.covariance_estimator_head = nn.Sequential(*modules)
+            self.covariance_estimator_head = nn.Sequential(*modules)
             self.var_activation = nn.Softplus()
 
         if self.conf.weights is not None:
@@ -533,7 +525,6 @@ class RaCo(nn.Module):
         return kpts
 
     def forward(self, data: dict) -> dict:
-        """Forward pass through the RaCo model."""
         # Preprocess image
         image = data["image"]
         if image.shape[1] == 1:
@@ -545,38 +536,38 @@ class RaCo(nn.Module):
         x = padder.pad(image)
 
         # Feature extraction
-        x1 = self.model.block1(x)  # B x c1 x H x W
-        x2 = self.model.pool2(x1)
-        x2 = self.model.block2(x2)  # B x c2 x H/2 x W/2
-        x3 = self.model.pool4(x2)
-        x3 = self.model.block3(x3)  # B x c3 x H/8 x W/8
-        x4 = self.model.pool4(x3)
-        x4 = self.model.block4(x4)  # B x dim x H/32 x W/32
+        x1 = self.block1(x)  # B x c1 x H x W
+        x2 = self.pool2(x1)
+        x2 = self.block2(x2)  # B x c2 x H/2 x W/2
+        x3 = self.pool4(x2)
+        x3 = self.block3(x3)  # B x c3 x H/8 x W/8
+        x4 = self.pool4(x3)
+        x4 = self.block4(x4)  # B x dim x H/32 x W/32
 
         # Feature aggregation
-        x1 = self.model.gate(self.model.conv1(x1))  # B x dim//4 x H x W
-        x2 = self.model.gate(self.model.conv2(x2))  # B x dim//4 x H//2 x W//2
-        x3 = self.model.gate(self.model.conv3(x3))  # B x dim//4 x H//8 x W//8
-        x4 = self.model.gate(self.model.conv4(x4))  # B x dim//4 x H//32 x W//32
-        x2_up = self.model.upsample2(x2)  # B x dim//4 x H x W
-        x3_up = self.model.upsample8(x3)  # B x dim//4 x H x W
-        x4_up = self.model.upsample32(x4)  # B x dim//4 x H x W
+        x1 = self.gate(self.conv1(x1))  # B x dim//4 x H x W
+        x2 = self.gate(self.conv2(x2))  # B x dim//4 x H//2 x W//2
+        x3 = self.gate(self.conv3(x3))  # B x dim//4 x H//8 x W//8
+        x4 = self.gate(self.conv4(x4))  # B x dim//4 x H//32 x W//32
+        x2_up = self.upsample2(x2)  # B x dim//4 x H x W
+        x3_up = self.upsample8(x3)  # B x dim//4 x H x W
+        x4_up = self.upsample32(x4)  # B x dim//4 x H x W
         x1234 = torch.cat([x1, x2_up, x3_up, x4_up], dim=1)
 
         # Score head
-        raw_score_map = self.model.score_head(x1234)
+        raw_score_map = self.score_head(x1234)
         raw_score_map = padder.unpad(raw_score_map)
 
         # Ranker head
         ranker_map = None
         if self.conf.ranker:
-            ranker_map = self.model.ranker_head(x)
+            ranker_map = self.ranker_head(x)
             ranker_map = padder.unpad(ranker_map)
 
         # Covariance estimator head
         cholesky_maps = None
         if self.conf.covariance_estimator:
-            cholesky_maps = self.model.covariance_estimator_head(x1234)
+            cholesky_maps = self.covariance_estimator_head(x1234)
             cholesky_maps = padder.unpad(cholesky_maps)
             # Apply softplus only to diagonal elements (L11 and L22), not L21
             cholesky_maps = torch.stack(

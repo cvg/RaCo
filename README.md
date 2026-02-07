@@ -109,6 +109,47 @@ ranker_scores = output["ranker_scores"]  # (B, N) - ranking scores
 covariances = output["covariances"]  # (B, N, 2, 2) - uncertainty estimates
 ```
 
+## PyTorch Hub Usage Guide
+
+Load RaCo directly from PyTorch Hub without cloning the repository.
+Pass in image tensors normalized to [0, 1] range and with shape
+(B, 3, H, W) for RGB or (B, 1, H, W) for grayscale images.
+
+```python
+import torch
+
+# Load RaCo with pretrained weights
+model = torch.hub.load('cvg/RaCo', 'raco', pretrained=True)
+model.eval()
+
+# Extract features from an image
+image = torch.rand(1, 3, 480, 640)  # Your image tensor (values in [0, 1])
+with torch.no_grad():
+    output = model.extract(image)
+
+print(output.keys())
+# Output: dict_keys(['keypoints', 'keypoint_scores', 'ranker_scores', 
+#                    'covariances', 'image_size'])
+```
+
+<details>
+<summary>Configuration with PyTorch Hub (click to expand)</summary>
+You can also customize the configuration when loading from PyTorch Hub:
+
+```python
+model = torch.hub.load(
+    'cvg/RaCo',
+    'raco',
+    pretrained=True,
+    max_num_keypoints=1024,
+    detection_threshold=0.0001,
+    ranker=True,
+    covariance_estimator=True
+)
+```
+Refer to the [Advanced Configuration](#advanced-configuration) section for details on all available parameters.
+</details>
+
 ## Demo
 
 Check out the [`demo.ipynb`](demo.ipynb) notebook for a complete walkthrough showing:
