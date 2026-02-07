@@ -134,6 +134,9 @@ Check out the [`demo.ipynb`](demo.ipynb) notebook for a complete walkthrough sho
 
 </details>
 
+## Training and Evaluation
+Training and evaluation code coming soon to [Glue Factory](https://github.com/cvg/glue-factory).
+
 ## Citation
 
 If you use RaCo in your research, please cite:
