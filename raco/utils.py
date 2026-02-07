@@ -130,34 +130,6 @@ def load_image(path: Path, resize: int = None, **kwargs) -> torch.Tensor:
     return numpy_image_to_torch(image)
 
 
-class Extractor(torch.nn.Module):
-    def __init__(self, **conf):
-        super().__init__()
-        self.conf = SimpleNamespace(**{**self.default_conf, **conf})
-
-    @torch.no_grad()
-    def extract(self, img: torch.Tensor, **conf) -> dict:
-        """Perform extraction with online resizing"""
-        if img.dim() == 3:
-            img = img[None]  # add batch dim
-        assert img.dim() == 4 and img.shape[0] == 1
-        shape = img.shape[-2:][::-1]
-        img, scales = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
-        feats = self.forward({"image": img})
-        feats["image_size"] = torch.tensor(shape)[None].to(img).float()
-        feats["keypoints"] = (feats["keypoints"] + 0.5) / scales[None] - 0.5
-
-        # Scale covariances if present
-        if "covariances" in feats:
-            scales_mat = torch.diag(scales).to(img)
-            feats["covariances"] = (
-                scales_mat[None]
-                @ feats["covariances"]
-                @ scales_mat[None].transpose(-1, -2)
-            )
-        return feats
-
-
 def match_pair(
     extractor,
     matcher,
@@ -172,7 +144,7 @@ def match_pair(
     matches01 = matcher({"image0": feats0, "image1": feats1})
     data = [feats0, feats1, matches01]
     # remove batch dim and move to target device
-    feats0, feats1, matches01 = [batch_to_device(rbd(x), device) for x in data]
+    feats0, feats1, matches01 = (batch_to_device(rbd(x), device) for x in data)
     return feats0, feats1, matches01
 
 

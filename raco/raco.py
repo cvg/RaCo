@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 
 from .raco_model import RacoModel
-from .utils import Extractor
+from .utils import ImagePreprocessor
 
 
 def _get_grid(
@@ -219,7 +219,7 @@ def _sample_at_keypoints(
     return sampled.squeeze(-1) if C == 1 else sampled  # (B, N) or (B, N, C)
 
 
-class RaCo(Extractor):
+class RaCo(nn.Module):
     default_conf = {
         "name": "raco",
         "weights": "https://github.com/cvg/RaCo/releases/download/v1.0.0/raco.pth",
@@ -238,7 +238,7 @@ class RaCo(Extractor):
 
     def __init__(self, **conf) -> None:
         """Initialize the RaCo model with given configuration."""
-        super().__init__(**conf)
+        super().__init__()
 
         self.conf = SimpleNamespace(**{**self.default_conf, **conf})
 
@@ -391,3 +391,33 @@ class RaCo(Extractor):
             out_dict["covariances"] = covariances  # (B, N, 2, 2)
 
         return out_dict
+
+    @torch.no_grad()
+    def extract(self, img: torch.Tensor, **conf) -> dict:
+        """Perform extraction with online resizing.
+        
+        Args:
+            img: Input image tensor of shape (C, H, W) or (B, C, H, W)
+            **conf: Additional preprocessing configuration (e.g., resize settings)
+            
+        Returns:
+            Dictionary containing extracted features with scaled coordinates
+        """
+        if img.dim() == 3:
+            img = img[None]  # add batch dim
+        assert img.dim() == 4 and img.shape[0] == 1
+        shape = img.shape[-2:][::-1]
+        img, scales = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
+        feats = self.forward({"image": img})
+        feats["image_size"] = torch.tensor(shape)[None].to(img).float()
+        feats["keypoints"] = (feats["keypoints"] + 0.5) / scales[None] - 0.5
+
+        # Scale covariances if present
+        if "covariances" in feats:
+            scales_mat = torch.diag(scales).to(img)
+            feats["covariances"] = (
+                scales_mat[None]
+                @ feats["covariances"]
+                @ scales_mat[None].transpose(-1, -2)
+            )
+        return feats
