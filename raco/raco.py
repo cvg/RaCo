@@ -357,6 +357,7 @@ class RaCo(nn.Module):
         "detection_threshold": -1,
         "ranker": True,
         "covariance_estimator": True,
+        "sort_by_ranker": False,
     }
 
     preprocess_conf = {
@@ -375,6 +376,8 @@ class RaCo(nn.Module):
             raise ValueError(
                 f"max_num_keypoints must be positive, got {self.conf.max_num_keypoints}"
             )
+        if self.conf.sort_by_ranker and not self.conf.ranker:
+            raise ValueError("Cannot sort by ranker if ranker head is disabled")
 
         self.normalizer = transforms.Normalize(
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
@@ -622,6 +625,29 @@ class RaCo(nn.Module):
             )  # (B, N, 3)
             covariances = _covariance_matrix_from_cholesky_elements(cholesky_scores)
             out_dict["covariances"] = covariances  # (B, N, 2, 2)
+
+        if self.conf.sort_by_ranker and "ranker_scores" in out_dict:
+            # Higher the ranker score, better the keypoint
+            sort_indices = torch.argsort(
+                out_dict["ranker_scores"], dim=1, descending=True
+            )
+            out_dict["keypoints"] = torch.gather(
+                out_dict["keypoints"],
+                dim=1,
+                index=sort_indices[..., None].expand(-1, -1, 2),
+            )
+            out_dict["keypoint_scores"] = torch.gather(
+                out_dict["keypoint_scores"], dim=1, index=sort_indices
+            )
+            out_dict["ranker_scores"] = torch.gather(
+                out_dict["ranker_scores"], dim=1, index=sort_indices
+            )
+            if "covariances" in out_dict:
+                out_dict["covariances"] = torch.gather(
+                    out_dict["covariances"],
+                    dim=1,
+                    index=sort_indices[..., None, None].expand(-1, -1, 2, 2),
+                )
 
         return out_dict
 
