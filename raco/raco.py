@@ -263,8 +263,6 @@ def _compute_subpixel_offsets(
     raw_logits: torch.Tensor,
     inds: torch.Tensor,
     nms_radius: int,
-    H: int,
-    W: int,
     subpixel_temp: float = 0.5,
 ) -> torch.Tensor:
     """Compute subpixel offsets for keypoints using local patch softmax.
@@ -350,11 +348,10 @@ class RaCo(nn.Module):
     default_conf = {
         "name": "raco",
         "weights": "https://github.com/cvg/RaCo/releases/download/v1.0.0/raco.pth",
-        "max_num_keypoints": 512,
+        "max_num_keypoints": 2048,
         "nms_radius": 3,
         "subpixel_sampling": True,
         "subpixel_temp": 0.5,
-        "detection_threshold": -1,
         "ranker": True,
         "covariance_estimator": True,
         "sort_by_ranker": False,
@@ -487,26 +484,22 @@ class RaCo(nn.Module):
         self,
         keypoint_probs: torch.Tensor,
         nms_radius: int,
-        num_kpts: Optional[int] = None,
         raw_logits: Optional[torch.Tensor] = None,
         subpixel: bool = False,
         subpixel_temp: Optional[float] = None,
     ) -> torch.Tensor:
-        """Sample keypoints using NMS and optional subpixel refinement.
+        """Sample keypoints using NMS and topk selection.
 
-        Returns keypoints in pixel coordinates [0, W-1] x [0, H-1].
+        Returns keypoints of shape (B, max_num_keypoints, 2) in pixel coordinates
+        [0, W-1] x [0, H-1].
         """
         # Modified from DaD https://github.com/Parskatt/dad
 
-        if num_kpts is None:
-            num_kpts = self.conf.max_num_keypoints
         if subpixel_temp is None:
             subpixel_temp = self.conf.subpixel_temp
 
         B, C, H, W = keypoint_probs.size()
-        device = keypoint_probs.device
-
-        grid = _get_grid(B, H, W, device=device).reshape(B, H * W, 2)
+        num_kpts = self.conf.max_num_keypoints
 
         # Apply NMS
         max_pooled = F.max_pool2d(
@@ -514,16 +507,17 @@ class RaCo(nn.Module):
         )
         keypoint_probs = keypoint_probs * (keypoint_probs == max_pooled)
 
-        inds = torch.topk(keypoint_probs.reshape(B, H * W), k=num_kpts).indices
-        kpts = torch.gather(grid, dim=1, index=inds[..., None].expand(B, num_kpts, 2))
-
-        kpts = _to_pixel_coords(kpts, H, W)
+        # Select top-k keypoints per image: (B, num_kpts)
+        topk = torch.topk(keypoint_probs.reshape(B, H * W), k=num_kpts)
+        hw_inds = topk.indices  # (B, num_kpts)
+        h_inds = hw_inds // W
+        w_inds = hw_inds % W
+        kpts = torch.stack([w_inds.float(), h_inds.float()], dim=-1)  # (B, num_kpts, 2)
 
         if subpixel and raw_logits is not None:
-            keypoint_offsets = _compute_subpixel_offsets(
-                raw_logits, inds, nms_radius, H, W, subpixel_temp
-            )
-            kpts = kpts + keypoint_offsets
+            kpts = kpts + _compute_subpixel_offsets(
+                raw_logits, hw_inds, nms_radius, subpixel_temp
+            )  # (B, num_kpts, 2)
 
         return kpts
 
@@ -592,7 +586,7 @@ class RaCo(nn.Module):
             nms_radius=self.conf.nms_radius,
             raw_logits=raw_score_map,
             subpixel=self.conf.subpixel_sampling,
-        )
+        )  # (B, N, 2)
 
         B, _, H, W = keypoint_probs.size()
 
@@ -601,33 +595,25 @@ class RaCo(nn.Module):
             keypoint_probs, keypoints, H, W, self.conf.subpixel_sampling
         )  # (B, N)
 
-        if self.conf.detection_threshold > 0:
-            mask = probs > self.conf.detection_threshold
-            keypoints = keypoints[mask].view(keypoints.shape[0], -1, 2)
-            probs = probs[mask].view(probs.shape[0], -1)
-
         out_dict = {
             "keypoints": keypoints + 0.5,  # (B, N, 2) in pixel coordinates
             "keypoint_scores": probs,  # (B, N)
         }
 
         if self.conf.ranker and ranker_map is not None:
-            # Higher the ranker score, better the keypoint
-            ranker_scores = _sample_at_keypoints(
+            out_dict["ranker_scores"] = _sample_at_keypoints(
                 ranker_map, keypoints, H, W, self.conf.subpixel_sampling
             )  # (B, N)
-            out_dict["ranker_scores"] = ranker_scores
 
         if self.conf.covariance_estimator and cholesky_maps is not None:
-            # Cholesky maps already have softplus applied to L11 and L22
             cholesky_scores = _sample_at_keypoints(
                 cholesky_maps, keypoints, H, W, self.conf.subpixel_sampling
             )  # (B, N, 3)
-            covariances = _covariance_matrix_from_cholesky_elements(cholesky_scores)
-            out_dict["covariances"] = covariances  # (B, N, 2, 2)
+            out_dict["covariances"] = _covariance_matrix_from_cholesky_elements(
+                cholesky_scores
+            )  # (B, N, 2, 2)
 
         if self.conf.sort_by_ranker and "ranker_scores" in out_dict:
-            # Higher the ranker score, better the keypoint
             sort_indices = torch.argsort(
                 out_dict["ranker_scores"], dim=1, descending=True
             )
