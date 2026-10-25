@@ -118,7 +118,7 @@ Ensure all the dependencies listed in `hubconf.py` are installed in your environ
 import torch
 
 # Load RaCo with pretrained weights
-model = torch.hub.load('cvg/RaCo', 'raco', pretrained=True)
+model = torch.hub.load("cvg/RaCo", "raco", pretrained=True)
 model.eval()
 
 # Extract features from an image
@@ -127,7 +127,7 @@ with torch.no_grad():
     output = model.extract(image)
 
 print(output.keys())
-# Output: dict_keys(['keypoints', 'keypoint_scores', 'ranker_scores', 
+# Output: dict_keys(['keypoints', 'keypoint_scores', 'ranker_scores',
 #                    'covariances', 'image_size'])
 ```
 
@@ -137,13 +137,13 @@ You can also customize the configuration when loading from PyTorch Hub:
 
 ```python
 model = torch.hub.load(
-    'cvg/RaCo',
-    'raco',
+    "cvg/RaCo",
+    "raco",
     pretrained=True,
     max_num_keypoints=1024,
     detection_threshold=0.0001,
     ranker=True,
-    covariance_estimator=True
+    covariance_estimator=True,
 )
 ```
 Refer to the [Advanced Configuration](#advanced-configuration) section for details on all available parameters.
