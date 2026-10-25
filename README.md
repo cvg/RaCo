@@ -79,7 +79,7 @@ The covariance estimator predicts the uncertainty of keypoint locations in 2D pi
 git clone https://github.com/cvg/RaCo.git
 cd RaCo && pip install -e .
 ```
-This will install PyTorch>=1.9.1, OpenCV, and Kornia.
+This will install PyTorch>=1.11 and OpenCV.
 
 ## Quick Start
 
