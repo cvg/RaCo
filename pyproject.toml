@@ -38,7 +38,6 @@ dependencies = [
     "numpy",
     "opencv-python",
     "matplotlib",
-    "lightglue @ git+https://github.com/cvg/LightGlue",
 ]
 
 [project.optional-dependencies]
