@@ -7,9 +7,23 @@ from types import SimpleNamespace
 from typing import List, Optional, Tuple, Union
 
 import cv2
-import kornia
 import numpy as np
 import torch
+import torch.nn.functional as F
+
+
+def side_to_image_size(size: int, h: int, w: int, side: str) -> Tuple[int, int]:
+    """(h, w) with the given side resized to size, aspect kept and truncated as kornia."""
+    if side not in ("short", "long", "vert", "horz"):
+        raise ValueError(f"side must be short, long, vert or horz, got {side}")
+    aspect_ratio = w / h
+    if side == "vert":
+        return size, int(size * aspect_ratio)
+    if side == "horz":
+        return int(size / aspect_ratio), size
+    if (side == "short") ^ (aspect_ratio < 1.0):
+        return size, int(size * aspect_ratio)
+    return int(size / aspect_ratio), size
 
 
 class ImagePreprocessor:
@@ -30,13 +44,17 @@ class ImagePreprocessor:
         """Resize and preprocess an image, return image and resize scale"""
         h, w = img.shape[-2:]
         if self.conf.resize is not None:
-            img = kornia.geometry.transform.resize(
-                img,
-                self.conf.resize,
-                side=self.conf.side,
-                antialias=self.conf.antialias,
-                align_corners=self.conf.align_corners,
-            )
+            size = self.conf.resize
+            if isinstance(size, int):
+                size = side_to_image_size(size, h, w, self.conf.side)
+            if tuple(size) != (h, w):
+                img = F.interpolate(
+                    img,
+                    tuple(size),
+                    mode=self.conf.interpolation,
+                    align_corners=self.conf.align_corners,
+                    antialias=self.conf.antialias,
+                )
         scale = torch.Tensor([img.shape[-1] / w, img.shape[-2] / h]).to(img)
         return img, scale
 
