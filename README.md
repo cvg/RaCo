@@ -198,6 +198,12 @@ We additionally show how to easily use RaCo's keypoints with ALIKED descriptors 
 
 ## Advanced configuration
 
+The `weights` argument also accepts an unmodified Glue Factory training checkpoint:
+
+```python
+model = RaCo(weights="outputs/training/raco_ranker/checkpoint_best.tar").eval()
+```
+
 <details>
 <summary>Details of all parameters (click to expand)</summary>
 

@@ -477,7 +477,25 @@ class RaCo(nn.Module):
                     self.conf.weights, map_location="cpu", weights_only=True
                 )
 
-            self.load_state_dict(state_dict, strict=False)
+            state_dict = state_dict.get("model", state_dict)
+            weights = {}
+            for name, value in state_dict.items():
+                parts = name.split(".")
+                while parts[0] in {"module", "_orig_mod", "extractor", "model"}:
+                    parts.pop(0)
+                name = ".".join(parts)
+                if name == "_training_step":
+                    continue
+                if not self.conf.ranker and name.startswith("ranker_head."):
+                    continue
+                if not self.conf.covariance_estimator and name.startswith(
+                    "covariance_estimator_head."
+                ):
+                    continue
+                if name in weights:
+                    raise ValueError(f"Duplicate RaCo parameter: {name}")
+                weights[name] = value
+            self.load_state_dict(weights, strict=True)
             print(f"[RaCo] Loaded weights from {self.conf.weights}")
 
     def _sampling(
