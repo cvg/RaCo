@@ -396,9 +396,15 @@ class RaCo(nn.Module):
         self.conv2 = conv3x3(c2, dim // 4)
         self.conv3 = conv3x3(c3, dim // 4)
         self.conv4 = conv3x3(c4, dim // 4)
-        self.upsample2 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.upsample4 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
-        self.upsample8 = nn.Upsample(scale_factor=8, mode="bilinear", align_corners=True)
+        self.upsample2 = nn.Upsample(
+            scale_factor=2, mode="bilinear", align_corners=True
+        )
+        self.upsample4 = nn.Upsample(
+            scale_factor=4, mode="bilinear", align_corners=True
+        )
+        self.upsample8 = nn.Upsample(
+            scale_factor=8, mode="bilinear", align_corners=True
+        )
         self.upsample32 = nn.Upsample(
             scale_factor=32, mode="bilinear", align_corners=True
         )
@@ -477,8 +483,34 @@ class RaCo(nn.Module):
                     self.conf.weights, map_location="cpu", weights_only=True
                 )
 
-            self.load_state_dict(state_dict, strict=False)
+            self.load_state_dict(self._extract_weights(state_dict), strict=True)
             print(f"[RaCo] Loaded weights from {self.conf.weights}")
+
+    def _extract_weights(self, state_dict: dict) -> dict:
+        """Extract RaCo weights from a state dict or Glue Factory checkpoint.
+
+        Strips wrapper prefixes and drops entries for heads that are disabled
+        in the config.
+        """
+        state_dict = state_dict.get("model", state_dict)
+        weights = {}
+        for name, value in state_dict.items():
+            parts = name.split(".")
+            while parts[0] in {"module", "_orig_mod", "extractor", "model"}:
+                parts.pop(0)
+            name = ".".join(parts)
+            if name == "_training_step":
+                continue
+            if not self.conf.ranker and name.startswith("ranker_head."):
+                continue
+            if not self.conf.covariance_estimator and name.startswith(
+                "covariance_estimator_head."
+            ):
+                continue
+            if name in weights:
+                raise ValueError(f"Duplicate RaCo parameter: {name}")
+            weights[name] = value
+        return weights
 
     def _sampling(
         self,

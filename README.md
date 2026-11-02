@@ -196,6 +196,31 @@ Check out the [`demo.ipynb`](demo.ipynb) notebook for a complete walkthrough sho
 ### Matching with LightGlue+
 We additionally show how to easily use RaCo's keypoints with ALIKED descriptors and LightGlue for two-view matching in the [`matching_demo.ipynb`](matching_demo.ipynb) notebook.
 
+## Training
+
+Train RaCo's detector, covariance head, and ranker in
+[Glue Factory](https://github.com/cvg/glue-factory). Its
+[RaCo overview](https://github.com/cvg/glue-factory#raco) links the training
+guide, pretrained matching configs, and standalone demos. The
+[step-by-step training guide](https://github.com/cvg/glue-factory/blob/main/docs/train_raco.md)
+includes installation, RevisitOP1M preparation, exact commands for each stage,
+and checkpoint locations. Glue Factory also provides
+[pretrained matching configs and evaluation instructions](https://github.com/cvg/glue-factory/blob/main/docs/raco.md).
+
+### Loading training checkpoints
+
+The `weights` argument accepts both the official plain state dictionary and a
+standard Glue Factory training checkpoint. Checkpoint wrappers and extractor/DDP
+parameter prefixes are handled automatically; no export script is needed.
+
+```python
+checkpoint = "/path/to/glue-factory/outputs/training/raco_ranker/checkpoint_best.tar"
+model = RaCo(weights=checkpoint).eval()
+```
+
+Omit `weights` to use the official pretrained release as before. This repository
+provides standalone inference; training is maintained in Glue Factory.
+
 ## Advanced configuration
 
 <details>
@@ -211,8 +236,6 @@ We additionally show how to easily use RaCo's keypoints with ALIKED descriptors 
 - `covariance_estimator`: Enable covariance prediction for 2D spatial keypoint uncertainty estimation. Default: True.
 
 </details>
-
-The training and evaluation code will be released in [Glue Factory](https://github.com/cvg/glue-factory).
 
 ## Citation
 
