@@ -141,32 +141,6 @@ def conv3x3(in_planes, out_planes, stride=1, kernel_size=3):
     )
 
 
-def _get_grid(
-    B: int,
-    H: int,
-    W: int,
-    device: torch.device,
-) -> torch.Tensor:
-    """
-    Generate normalized coordinate grid for batch of images.
-
-    Args:
-        B: Batch size
-        H: Height
-        W: Width
-        device: Target device
-
-    Returns:
-        Grid tensor of shape (B, H*W, 2) with normalized coordinates in [-1, 1]
-    """
-    x1_n = torch.meshgrid(
-        *[torch.linspace(-1, 1, n, device=device) for n in (B, H, W)],
-        indexing="ij",
-    )
-    x1_n = torch.stack((x1_n[2], x1_n[1]), dim=-1).reshape(B, H * W, 2)
-    return x1_n
-
-
 def _extract_patches_from_indices(
     x: torch.Tensor,
     inds: torch.Tensor,
@@ -229,34 +203,6 @@ def _covariance_matrix_from_cholesky_elements(
         return cov_matrix_flat.view(original_shape + (2, 2))
     else:  # Single matrix case
         return torch.matmul(L, L.transpose(-1, -2))
-
-
-def _to_pixel_coords(
-    normalized_coords: torch.Tensor,
-    h: int,
-    w: int,
-) -> torch.Tensor:
-    """
-    Convert normalized coordinates [-1, 1] to pixel coordinates [0, W-1] x [0, H-1].
-
-    Args:
-        normalized_coords: Tensor of shape (..., 2) with normalized coordinates
-        h: Image height
-        w: Image width
-
-    Returns:
-        Pixel coordinates tensor of same shape, in range [0, W-1] x [0, H-1]
-    """
-    if normalized_coords.shape[-1] != 2:
-        raise ValueError(f"Expected shape (..., 2), but got {normalized_coords.shape}")
-    pixel_coords = torch.stack(
-        (
-            (w - 1) * (normalized_coords[..., 0] + 1) / 2,
-            (h - 1) * (normalized_coords[..., 1] + 1) / 2,
-        ),
-        dim=-1,
-    )
-    return pixel_coords
 
 
 def _compute_subpixel_offsets(
@@ -396,15 +342,9 @@ class RaCo(nn.Module):
         self.conv2 = conv3x3(c2, dim // 4)
         self.conv3 = conv3x3(c3, dim // 4)
         self.conv4 = conv3x3(c4, dim // 4)
-        self.upsample2 = nn.Upsample(
-            scale_factor=2, mode="bilinear", align_corners=True
-        )
-        self.upsample4 = nn.Upsample(
-            scale_factor=4, mode="bilinear", align_corners=True
-        )
-        self.upsample8 = nn.Upsample(
-            scale_factor=8, mode="bilinear", align_corners=True
-        )
+        self.upsample2 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.upsample4 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        self.upsample8 = nn.Upsample(scale_factor=8, mode="bilinear", align_corners=True)
         self.upsample32 = nn.Upsample(
             scale_factor=32, mode="bilinear", align_corners=True
         )
