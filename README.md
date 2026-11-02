@@ -199,11 +199,13 @@ We additionally show how to easily use RaCo's keypoints with ALIKED descriptors 
 ## Training
 
 Train RaCo's detector, covariance head, and ranker in
-[Glue Factory](https://github.com/cvg/glue-factory). The
+[Glue Factory](https://github.com/cvg/glue-factory). Its
+[RaCo overview](https://github.com/cvg/glue-factory#raco) links the training
+guide, pretrained matching configs, and standalone demos. The
 [step-by-step training guide](https://github.com/cvg/glue-factory/blob/main/docs/train_raco.md)
 includes installation, RevisitOP1M preparation, exact commands for each stage,
 and checkpoint locations. Glue Factory also provides
-[matching configs and an HPatches visualization example](https://github.com/cvg/glue-factory/blob/main/docs/raco.md).
+[pretrained matching configs and evaluation instructions](https://github.com/cvg/glue-factory/blob/main/docs/raco.md).
 
 ### Loading training checkpoints
 
