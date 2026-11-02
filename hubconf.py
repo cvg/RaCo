@@ -15,7 +15,7 @@ Usage:
                           max_num_keypoints=1024, nms_radius=5)
 """
 
-dependencies = ["torch", "torchvision", "numpy", "cv2", "kornia"]
+dependencies = ["torch", "torchvision", "numpy", "cv2"]
 
 
 def raco(pretrained=True, **kwargs):
