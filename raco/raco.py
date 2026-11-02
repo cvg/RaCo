@@ -320,9 +320,7 @@ def _sample_at_keypoints(
                 2.0 * keypoints[..., 1] / (H - 1) - 1.0,  # y
             ],
             dim=-1,
-        ).unsqueeze(
-            2
-        )  # (B, N, 1, 2)
+        ).unsqueeze(2)  # (B, N, 1, 2)
 
         sampled = F.grid_sample(
             feature_map,
@@ -330,9 +328,7 @@ def _sample_at_keypoints(
             mode="bilinear",
             padding_mode="border",
             align_corners=True,
-        ).squeeze(
-            -1
-        )  # (B, C, N)
+        ).squeeze(-1)  # (B, C, N)
     else:
         # For integer keypoints, use direct indexing
         idxs = (
