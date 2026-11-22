@@ -58,3 +58,6 @@ ENV/
 
 # OS
 .DS_Store
+
+# Exported ONNX models
+onnx/models/

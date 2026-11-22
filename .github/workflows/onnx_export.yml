@@ -1,0 +1,58 @@
+name: ONNX export
+
+# Export the RaCo detector ONNX model on CPU and check it against the PyTorch
+# implementation. The float16 model needs a CUDA GPU and is not covered here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "raco/**"
+      - "onnx/**"
+      - "pyproject.toml"
+      - ".github/workflows/onnx_export.yml"
+  pull_request:
+    paths:
+      - "raco/**"
+      - "onnx/**"
+      - "pyproject.toml"
+      - ".github/workflows/onnx_export.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export-and-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch==2.6.0 torchvision==0.21.0 \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy opencv-python-headless \
+            onnx==1.23.2 onnxscript==0.7.2 onnxruntime==1.23.2
+          python -m pip install --no-deps -e .
+
+      - name: Cache the weights
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/torch/hub/checkpoints
+          key: raco-weights-v1.0.0
+
+      - name: Export the float32 detector
+        run: python onnx/export.py --output_dir /tmp/raco_onnx
+
+      - name: Check the float32 detector
+        run: |
+          python onnx/check.py --cpu \
+            --model /tmp/raco_onnx/raco_detector.onnx

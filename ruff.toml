@@ -11,5 +11,8 @@ select = [
 ]
 ignore = ["SIM117"]
 
+[lint.isort]
+known-third-party = ["onnx"]
+
 [lint.per-file-ignores]
 "scripts/python/*.py" = ["E", "SIM", "UP", "B"]
